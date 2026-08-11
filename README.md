@@ -81,14 +81,23 @@ E9 的统计优势：双中率 25.3% > 双错率 24.7%（每注期望 +0.89，�
 | 文件 | 说明 |
 |------|------|
 | `backtest_e9.py` | E9 回测引擎（自包含，不依赖外部包） |
-| `pc28_history.db` | SQLite 数据库（31244期，截至2026-08-11 15:16） |
+| `pc28_history.db` | SQLite 数据库（31248期，截至2026-08-11 15:30） |
 | `db_setup.py` | 数据库初始化/迁移/校验/导出脚本 |
+| `fetch_update.py` | 开奖数据自动更新脚本（拉取最新期并入库） |
 | `backtest_daily.html` | 回测生成的每日统计 |
 | `backtest_today.html` | 回测生成的今日逐期明细 |
 
 ## 六、回测脚本使用
 
 ```bash
+# 更新开奖数据 (从 pc28.help 拉取最近2000期, 自动入库并校验)
+python fetch_update.py
+
+# 其他更新选项
+python fetch_update.py --nbr 5000          # 指定拉取期数 (最多30000)
+python fetch_update.py --source wh28 --days 1  # 备用源 wh28.com (每天仅最新100期)
+python fetch_update.py --verify            # 仅校验数据库完整性
+
 # 首次使用: 初始化数据库 (从 CSV 导入, 现已迁移完成)
 python db_setup.py --verify
 

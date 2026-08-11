@@ -250,6 +250,7 @@ function drawAll(sel) {
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
     dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#333',backgroundColor:'#1a1d29',dataBackground:{lineStyle:{color:'#444'},areaStyle:{color:'#2a2e3d'}},selectedDataBackground:{lineStyle:{color:'#5470c6'},areaStyle:{color:'#5470c6'}}}],
     series:[{type:'line',data:cum,smooth:true,symbol:'none',lineStyle:{color:'#91cc75',width:2},areaStyle:{color:'rgba(145,204,117,0.12)'},
+      markLine:{symbol:'none',silent:true,lineStyle:{color:'#888',type:'dashed',width:1},label:{show:false},data:[{yAxis:0}]},
       markPoint:{symbol:'pin',symbolSize:22,data:burstIdx.map(b=>({coord:b.value,value:b.times,itemStyle:{color:'#ee6666'},
         label:{show:true,formatter:'{c}',color:'#fff',fontSize:9,position:'inside'}}))}}]
   }, {notMerge:true});

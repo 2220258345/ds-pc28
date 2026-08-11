@@ -84,6 +84,8 @@ E9 的统计优势：双中率 25.3% > 双错率 24.7%（每注期望 +0.89，�
 | `pc28_history.db` | SQLite 数据库（31248期，截至2026-08-11 15:30） |
 | `db_setup.py` | 数据库初始化/迁移/校验/导出脚本 |
 | `fetch_update.py` | 开奖数据自动更新脚本（拉取最新期并入库） |
+| `generate_chart.py` | 生成 E9 回测交互式图表仪表盘 |
+| `backtest_chart.html` | E9 回测图表仪表盘（曲线+时间筛选+按日下钻） |
 | `backtest_daily.html` | 回测生成的每日统计 |
 | `backtest_today.html` | 回测生成的今日逐期明细 |
 
@@ -113,6 +115,9 @@ python db_setup.py --export
 
 # 止盈止损网格扫描（8×8=64种组合）
 python backtest_e9.py --stops
+
+# 交互式图表仪表盘 (曲线 + 时间范围选择 + 按日下钻)
+python generate_chart.py
 ```
 
 ### 修改配置

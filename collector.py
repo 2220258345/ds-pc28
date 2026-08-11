@@ -102,6 +102,60 @@ def fetch_pc28help(nbr, host="pc28.help"):
     return _parse_csv(text)
 
 
+def fetch_pc28help_json(nbr, host="pc28.help"):
+    """从 pc28.help 拉取最近 nbr 期 (JSON 格式, 比 CSV 更稳定)。"""
+    url = f"https://{host}/api/kj.json?nbr={nbr}"
+    data = json.loads(http_get(url))
+    if not data.get("data"):
+        raise RuntimeError(f"{host} json: {data.get('message', 'no data')}")
+    rows = []
+    for item in data["data"]:
+        # number: "9+7+7", combination: "大单"
+        parts = item["number"].split("+")
+        s = int(item["num"])
+        combo = item.get("combination", "")
+        if len(combo) >= 2:
+            size, parity = combo[0], combo[1]
+        else:
+            size, parity, _ = calc_meta(s)
+        rows.append({
+            "draw_nbr": int(item["nbr"]),
+            "draw_date": item["date"],
+            "draw_time": item["time"],
+            "c1": int(parts[0]), "c2": int(parts[1]), "c3": int(parts[2]),
+            "draw_num": s,
+            "size_type": size, "parity_type": parity, "combination_type": combo or size + parity,
+        })
+    return rows
+
+
+# ============================================================
+# 数据源 0: jndpc.net api.php (JSON, 最新1期, 最快)
+# ============================================================
+
+def fetch_jndpc():
+    """从 jndpc.net api.php 拉取最新 1 期 (数据最及时, 用短超时快速失败)。"""
+    url = "https://www.jndpc.net/api.php?t=" + str(int(time.time() * 1000))
+    data = json.loads(http_get(url, timeout=5))
+    issue = int(data["issue"])
+    result_str = data["result"]  # 格式: "9+9+1=19"
+    parts = result_str.split("=")
+    nums = parts[0].split("+")
+    s = int(parts[1])
+    size, parity, combo = calc_meta(s)
+    srv_ts = int(data.get("server_time", time.time()))
+    dt = datetime.fromtimestamp(srv_ts, tz=CN_TZ)
+    rows = [{
+        "draw_nbr": issue,
+        "draw_date": dt.strftime("%Y-%m-%d"),
+        "draw_time": dt.strftime("%H:%M:%S"),
+        "c1": int(nums[0]), "c2": int(nums[1]), "c3": int(nums[2]),
+        "draw_num": s,
+        "size_type": size, "parity_type": parity, "combination_type": combo,
+    }]
+    return rows
+
+
 # ============================================================
 # 数据源 3: wh28.com history (JSON)
 # ============================================================
@@ -129,6 +183,27 @@ def fetch_wh28_history(date_str=None):
             "size_type": size, "parity_type": parity, "combination_type": combo,
         })
     return rows
+
+
+def fetch_wh28_latest():
+    """从 wh28.com latest 接口拉取最新 1 期 (只返回1期, 速度最快)。"""
+    url = "https://wh28.com/api/lottery/latest?code=jnd28"
+    data = json.loads(http_get(url, timeout=5))
+    if data.get("code") != 200:
+        raise RuntimeError(f"wh28 latest: {data.get('message', 'unknown')}")
+    item = data["data"]["latestOpen"]
+    dt = datetime.fromtimestamp(int(item["drawTime"]), tz=CN_TZ)
+    nums = item["drawCode"]
+    s = int(item["drawSum"])
+    size, parity, combo = calc_meta(s)
+    return [{
+        "draw_nbr": int(item["drawIssue"]),
+        "draw_date": dt.strftime("%Y-%m-%d"),
+        "draw_time": dt.strftime("%H:%M:%S"),
+        "c1": int(nums[0]), "c2": int(nums[1]), "c3": int(nums[2]),
+        "draw_num": s,
+        "size_type": size, "parity_type": parity, "combination_type": combo,
+    }]
 
 
 # ============================================================
@@ -163,16 +238,20 @@ def fetch_wh28_trend():
 # ============================================================
 
 SOURCES = {
-    "pc28":    {"name": "pc28.help",       "fn": lambda: fetch_pc28help(2000, "pc28.help")},
-    "pc28www": {"name": "www.pc28.help",   "fn": lambda: fetch_pc28help(2000, "www.pc28.help")},
-    "wh28":    {"name": "wh28 history",    "fn": lambda: fetch_wh28_history()},
-    "wh28t":   {"name": "wh28 trend",      "fn": fetch_wh28_trend},
+    "jndpc":     {"name": "jndpc.net",         "fn": fetch_jndpc},
+    "wh28l":     {"name": "wh28 latest",       "fn": fetch_wh28_latest},
+    "wh28":      {"name": "wh28 history",      "fn": fetch_wh28_history},
+    "wh28t":     {"name": "wh28 trend",        "fn": fetch_wh28_trend},
+    "pc28j":     {"name": "pc28.help json",    "fn": lambda: fetch_pc28help_json(2000, "pc28.help")},
+    "pc28wwwj":  {"name": "www.pc28.help json","fn": lambda: fetch_pc28help_json(2000, "www.pc28.help")},
+    "pc28":      {"name": "pc28.help csv",     "fn": lambda: fetch_pc28help(2000, "pc28.help")},
+    "pc28www":   {"name": "www.pc28.help csv", "fn": lambda: fetch_pc28help(2000, "www.pc28.help")},
 }
 
-# 增量更新优先级: 无限流源优先
-INCREMENTAL_ORDER = ["wh28", "wh28t", "pc28", "pc28www"]
-# 全量更新优先级: 大批量源优先
-FULL_ORDER = ["pc28", "pc28www"]
+# 增量更新优先级: 实测 pc28.help json 发布最快 (3.5s), 其次 jndpc (5.3s), wh28 最慢 (11s+)
+INCREMENTAL_ORDER = ["pc28j", "jndpc", "wh28l", "wh28", "wh28t", "pc28wwwj", "pc28", "pc28www"]
+# 全量更新优先级: 大批量源优先 (JSON 优先于 CSV)
+FULL_ORDER = ["pc28j", "pc28wwwj", "pc28", "pc28www"]
 
 
 def fetch_with_failover(order, verbose=True):

@@ -5,55 +5,80 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>E9 回测图表仪表盘</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --paper:#f4f5f7; --panel:#ffffff; --panel-2:#eef0f2;
+    --ink:#1d1d1f; --ink-2:#5c5c62; --ink-3:#8b8b91;
+    --rule:#e2e3e6; --rule-2:#ecedef;
+    --accent:#2c5282; --accent-2:#3b6ea5;
+    --red:#c4444a; --green:#2f855a; --amber:#b7791f;
+    --radius:4px;
+  }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:-apple-system,"Microsoft YaHei",sans-serif; background:#0f1117; color:#e0e0e0; padding:12px; }
-  h1 { font-size:18px; color:#fff; margin-bottom:4px; }
-  .sub { font-size:11px; color:#888; margin-bottom:6px; line-height:1.5; }
-  .status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:#1a1d29; border:1px solid #2a2e3d; border-radius:8px; padding:6px 10px; margin-bottom:10px; font-size:11px; color:#aaa; }
-  .status .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
-  .status .dot.on { background:#91cc75; } .status .dot.off { background:#ee6666; } .status .dot.run { background:#fac858; }
-  .status .btn { background:#2a2e3d; color:#e0e0e0; border:1px solid #444; border-radius:6px; padding:3px 10px; font-size:11px; cursor:pointer; }
-  .status .btn:hover { border-color:#5470c6; color:#fff; }
-  .status .sp { color:#e0e0e0; }
-  .status .ok { color:#91cc75; } .status .err { color:#ee6666; }
-  .controls { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
-  .ctrl-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-  .ctrl-row label { font-size:11px; color:#aaa; margin:0 2px 0 0; }
-  .ctrl-row label:first-child { min-width:28px; }
-  .controls input[type=date], .controls input[type=number] { background:#1a1d29; color:#e0e0e0; border:1px solid #333; border-radius:6px; padding:5px 8px; font-size:12px; width:74px; }
-  .preset { background:#1a1d29; color:#aaa; border:1px solid #333; border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-  .preset:hover,.preset:active { border-color:#5470c6; color:#fff; }
-  .preset.active { background:#5470c6; color:#fff; border-color:#5470c6; }
-  .summary { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-  .s-card { background:#1a1d29; border-radius:8px; padding:6px 10px; min-width:78px; flex:1; text-align:center; }
-  .s-card .label { font-size:10px; color:#888; margin-bottom:1px; }
-  .s-card .val { font-size:15px; font-weight:600; }
-  .pos { color:#91cc75; } .neg { color:#ee6666; } .flat { color:#fac858; }
-  .chart { background:#1a1d29; border-radius:10px; padding:8px; margin-bottom:10px; }
-  .chart h3 { font-size:12px; color:#ccc; font-weight:500; margin:2px 0 4px 4px; }
-  .chart div { width:100%; height:260px; }
-  .chart.tall div { height:300px; }
-  .chart.strip div { height:56px; }
-  select { -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family:"DM Sans",-apple-system,"Microsoft YaHei",sans-serif;
+    background:var(--paper); color:var(--ink); padding:16px;
+    font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1 { font-size:22px; font-weight:700; color:var(--ink); margin-bottom:4px; letter-spacing:-0.01em; }
+  .sub { font-size:13px; color:var(--ink-3); margin-bottom:10px; line-height:1.5; }
+  .status { display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:var(--panel); border:1px solid var(--rule); border-radius:var(--radius); padding:8px 12px; margin-bottom:12px; font-size:13px; color:var(--ink-2); }
+  .status .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px; vertical-align:middle; }
+  .status .dot.on { background:var(--green); } .status .dot.off { background:var(--red); } .status .dot.run { background:var(--amber); }
+  .status .btn { background:var(--panel-2); color:var(--ink-2); border:1px solid var(--rule); border-radius:var(--radius); padding:4px 12px; font-family:inherit; font-size:13px; cursor:pointer; transition:all 0.15s ease; }
+  .status .btn:hover { border-color:var(--ink-3); color:var(--ink); }
+  .status .sp { color:var(--ink-2); }
+  .status .sp b { font-family:"JetBrains Mono",monospace; font-weight:700; color:var(--ink); }
+  .status .ok { color:var(--green); } .status .err { color:var(--red); }
+  .controls { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .ctrl-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .ctrl-row label { font-size:13px; color:var(--ink-3); margin:0 4px 0 0; }
+  .ctrl-row label:first-child { min-width:32px; }
+  .controls input[type=date], .controls input[type=number] {
+    background:var(--panel); color:var(--ink); border:1px solid var(--rule); border-radius:var(--radius);
+    padding:5px 10px; font-family:"JetBrains Mono",monospace; font-size:14px; width:90px;
+  }
+  .controls input:focus { outline:none; border-color:var(--accent); }
+  .preset {
+    background:var(--panel); color:var(--ink-2); border:1px solid var(--rule); border-radius:var(--radius);
+    padding:5px 12px; font-family:inherit; font-size:14px; cursor:pointer;
+    -webkit-tap-highlight-color:transparent; transition:all 0.15s ease;
+  }
+  .preset:hover,.preset:active { border-color:var(--ink-3); color:var(--ink); }
+  .preset.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .summary { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .s-card { background:var(--panel); border:1px solid var(--rule); border-radius:var(--radius); padding:8px 12px; min-width:90px; flex:1; text-align:center; }
+  .s-card .label { font-size:12px; color:var(--ink-3); margin-bottom:2px; }
+  .s-card .val { font-family:"JetBrains Mono",monospace; font-size:18px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .pos { color:var(--green); } .neg { color:var(--red); } .flat { color:var(--amber); }
+  .chart { background:var(--panel); border:1px solid var(--rule); border-radius:var(--radius); padding:10px; margin-bottom:12px; }
+  .chart h3 { font-size:14px; color:var(--ink-2); font-weight:600; margin:2px 0 6px 6px; }
+  .chart div { width:100%; height:280px; }
+  .chart.tall div { height:320px; }
+  .chart.strip div { height:60px; }
+  select { -webkit-tap-highlight-color:transparent; font-family:inherit; }
   @media (max-width:640px) {
-    body { padding:8px; }
-    h1 { font-size:16px; }
-    .sub { font-size:10px; }
-    .controls { gap:4px; }
-    .ctrl-row { gap:4px; }
-    .ctrl-row label { font-size:10px; }
-    .ctrl-row label:first-child { min-width:24px; }
-    .controls input[type=date], .controls input[type=number] { width:64px; padding:4px 6px; font-size:11px; }
-    .preset { padding:4px 8px; font-size:11px; }
-    .s-card { min-width:64px; padding:4px 6px; }
-    .s-card .label { font-size:9px; }
-    .s-card .val { font-size:13px; }
-    .chart { padding:6px; margin-bottom:8px; }
-    .chart h3 { font-size:11px; }
-    .chart div { height:200px; }
-    .chart.tall div { height:240px; }
-    .chart.strip div { height:48px; }
+    body { padding:10px; }
+    h1 { font-size:19px; }
+    .sub { font-size:12px; }
+    .controls { gap:6px; }
+    .ctrl-row { gap:6px; }
+    .ctrl-row label { font-size:12px; }
+    .ctrl-row label:first-child { min-width:28px; }
+    .controls input[type=date], .controls input[type=number] { width:76px; padding:4px 8px; font-size:13px; }
+    .preset { padding:4px 10px; font-size:13px; }
+    .s-card { min-width:72px; padding:6px 8px; }
+    .s-card .label { font-size:11px; }
+    .s-card .val { font-size:16px; }
+    .chart { padding:8px; margin-bottom:10px; }
+    .chart h3 { font-size:13px; }
+    .chart div { height:220px; }
+    .chart.tall div { height:260px; }
+    .chart.strip div { height:52px; }
   }
 </style>
 </head>
@@ -67,10 +92,7 @@
   <span class="sp">最新 <b id="sMax">-</b></span>
   <span class="sp">更新 <b id="sUpd">-</b></span>
   <span class="sp">新增 <b id="sCnt">-</b></span>
-  <span class="sp" id="sAutoTxt">自动 <b id="sAuto">-</b></span>
-  <button class="btn" id="btnRefresh">立即采集</button>
   <button class="btn" id="btnReload">重载图表</button>
-  <button class="btn" id="btnToggle">暂停自动</button>
 </div>
 
 <div class="controls">
@@ -107,7 +129,7 @@
 <div class="chart tall">
   <h3>当日逐期明细（选择日期下钻：累计盈亏 + 档位）</h3>
   <div style="margin:0 0 6px 4px;"><label>选择日期</label>
-  <select id="daySel" style="background:#1a1d29;color:#e0e0e0;border:1px solid #333;border-radius:6px;padding:4px 8px;font-size:12px;"></select></div>
+  <select id="daySel" style="background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:var(--radius);padding:5px 10px;font-size:14px;"></select></div>
   <div id="drilldown"></div>
 </div>
 
@@ -121,9 +143,9 @@ const $ = id => document.getElementById(id);
 const FMT = new Intl.NumberFormat('zh-CN');
 const sgn = v => v >= 0 ? '+' : '';
 const RES = ['双中', '平局', '双错', '炸', '未下注'];
-const TT = { trigger:'axis', confine:true, backgroundColor:'#252836', borderColor:'#333',
-  textStyle:{color:'#e0e0e0', fontSize:12}, padding:[4,8],
-  extraCssText:'display:inline-block !important;width:fit-content !important;height:auto !important;max-width:none !important;white-space:nowrap;' };
+const TT = { trigger:'axis', confine:true, backgroundColor:'#ffffff', borderColor:'#e2e3e6',
+  textStyle:{color:'#1d1d1f', fontSize:13}, padding:[4,8],
+  extraCssText:'display:inline-block !important;width:fit-content !important;height:auto !important;max-width:none !important;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.08);' };
 
 // ============ 回测引擎 (移植自 backtest_e9.py) ============
 function predictE9(c1, c2, c3) {
@@ -358,17 +380,17 @@ function drawAll(sel) {
       if (i < 0 || i >= sel.length) return '';
       const d = sel[i];
       let s = `${dates[i]} · 累计 ${sgn(cum[i])}${FMT.format(cum[i])} · 当日 ${sgn(d.p)}${FMT.format(d.p)}`;
-      if (d.br > 0) s += ` · <b style="color:#ee6666">炸${d.br}次</b>`;
+      if (d.br > 0) s += ` · <b style="color:#c4444a">炸${d.br}次</b>`;
       return s;
     } }),
     grid:{left:70,right:20,top:25,bottom:55},
-    xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
-    yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
-    dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#333',backgroundColor:'#1a1d29',dataBackground:{lineStyle:{color:'#444'},areaStyle:{color:'#2a2e3d'}},selectedDataBackground:{lineStyle:{color:'#5470c6'},areaStyle:{color:'#5470c6'}}}],
-    visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#ee6666'},{gt:0,lte:1e15,color:'#91cc75'}]},
+    xAxis:{type:'category',data:dates,axisLabel:{color:'#8b8b91',fontSize:13},axisLine:{lineStyle:{color:'#e2e3e6'}}},
+    yAxis:{type:'value',axisLabel:{color:'#8b8b91',fontSize:13,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#ecedef'}}},
+    dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#e2e3e6',backgroundColor:'#ffffff',dataBackground:{lineStyle:{color:'#e2e3e6'},areaStyle:{color:'#eef0f2'}},selectedDataBackground:{lineStyle:{color:'#2c5282'},areaStyle:{color:'#2c5282'}}}],
+    visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#c4444a'},{gt:0,lte:1e15,color:'#2f855a'}]},
     series:[{type:'line',data:cum,smooth:true,symbol:sel.length<=1?'circle':'none',symbolSize:8,lineStyle:{width:2},
-      markLine:{symbol:'none',silent:true,lineStyle:{color:'#fac858',type:'dashed',width:1},
-        label:{show:true,formatter:'0',position:'insideEndTop',color:'#888',fontSize:10},
+      markLine:{symbol:'none',silent:true,lineStyle:{color:'#b7791f',type:'dashed',width:1},
+        label:{show:true,formatter:'0',position:'insideEndTop',color:'#8b8b91',fontSize:12},
         data:[{yAxis:0}]}}]
   }, {notMerge:true});
 
@@ -379,10 +401,10 @@ function drawAll(sel) {
       const d=sel[i];
       return `${dates[i]} · 炸 ${d.br} 次`; }}),
     grid:{left:70,right:20,top:6,bottom:20},
-    xAxis:{type:'category',data:dates,axisLabel:{show:false},axisLine:{lineStyle:{color:'#333'}}},
+    xAxis:{type:'category',data:dates,axisLabel:{show:false},axisLine:{lineStyle:{color:'#e2e3e6'}}},
     yAxis:{type:'value',min:0,max:bmax,interval:1,show:false},
     series:[{type:'bar',data:sel.map(d=>d.br>0?d.br:null),barMaxWidth:10,
-      itemStyle:{color:'#ee6666',borderRadius:[2,2,0,0]}}]
+      itemStyle:{color:'#c4444a',borderRadius:[2,2,0,0]}}]
   }, {notMerge:true});
 
   charts.daily.setOption({
@@ -391,12 +413,12 @@ function drawAll(sel) {
       const d=sel[i];
       return `${dates[i]} · ${sgn(d.p)}${FMT.format(d.p)} · 注${d.b} 中${d.w}/平${d.f}/错${d.l} 炸${d.br}`; }}),
     grid:{left:70,right:20,top:25,bottom:50},
-    xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
-    yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
-    visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#ee6666'},{gt:0,lte:1e15,color:'#91cc75'}]},
+    xAxis:{type:'category',data:dates,axisLabel:{color:'#8b8b91',fontSize:13},axisLine:{lineStyle:{color:'#e2e3e6'}}},
+    yAxis:{type:'value',axisLabel:{color:'#8b8b91',fontSize:13,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#ecedef'}}},
+    visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#c4444a'},{gt:0,lte:1e15,color:'#2f855a'}]},
     series:[{type:'line',data:sel.map(d=>d.p),smooth:true,symbol:'circle',symbolSize:4,lineStyle:{width:2},
-      markLine:{symbol:'none',silent:true,lineStyle:{color:'#fac858',type:'dashed',width:1},
-        label:{show:true,formatter:'0',position:'insideEndTop',color:'#888',fontSize:10},
+      markLine:{symbol:'none',silent:true,lineStyle:{color:'#b7791f',type:'dashed',width:1},
+        label:{show:true,formatter:'0',position:'insideEndTop',color:'#8b8b91',fontSize:12},
         data:[{yAxis:0}]}}]
   }, {notMerge:true});
 
@@ -407,9 +429,9 @@ function drawAll(sel) {
       const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
       return `${dates[i]} · 回撤 ${FMT.format(dd[i])}`; }}),
     grid:{left:70,right:20,top:25,bottom:50},
-    xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
-    yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
-    series:[{type:'line',data:dd,smooth:true,symbol:sel.length<=1?'circle':'none',symbolSize:8,lineStyle:{color:'#ee6666',width:1.5},areaStyle:{color:'rgba(238,102,102,0.18)'}}]
+    xAxis:{type:'category',data:dates,axisLabel:{color:'#8b8b91',fontSize:13},axisLine:{lineStyle:{color:'#e2e3e6'}}},
+    yAxis:{type:'value',axisLabel:{color:'#8b8b91',fontSize:13,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#ecedef'}}},
+    series:[{type:'line',data:dd,smooth:true,symbol:sel.length<=1?'circle':'none',symbolSize:8,lineStyle:{color:'#c4444a',width:1.5},areaStyle:{color:'rgba(196,68,74,0.12)'}}]
   }, {notMerge:true});
 
   charts.outcomes.setOption({
@@ -417,14 +439,14 @@ function drawAll(sel) {
       const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
       const d=sel[i];
       return `${dates[i]} · 双中${d.w} 平局${d.f} 双错${d.l}`; }}),
-    legend:{textStyle:{color:'#aaa',fontSize:11},top:0},
+    legend:{textStyle:{color:'#5c5c62',fontSize:13},top:0},
     grid:{left:70,right:20,top:30,bottom:50},
-    xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
-    yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11},splitLine:{lineStyle:{color:'#222'}}},
+    xAxis:{type:'category',data:dates,axisLabel:{color:'#8b8b91',fontSize:13},axisLine:{lineStyle:{color:'#e2e3e6'}}},
+    yAxis:{type:'value',axisLabel:{color:'#8b8b91',fontSize:13},splitLine:{lineStyle:{color:'#ecedef'}}},
     series:[
-      {name:'双中',type:'bar',stack:'o',data:sel.map(d=>d.w),itemStyle:{color:'rgba(145,204,117,0.7)'}},
-      {name:'平局',type:'bar',stack:'o',data:sel.map(d=>d.f),itemStyle:{color:'rgba(250,200,88,0.6)'}},
-      {name:'双错',type:'bar',stack:'o',data:sel.map(d=>d.l),itemStyle:{color:'rgba(238,102,102,0.7)'}}
+      {name:'双中',type:'bar',stack:'o',data:sel.map(d=>d.w),itemStyle:{color:'rgba(47,133,90,0.7)'}},
+      {name:'平局',type:'bar',stack:'o',data:sel.map(d=>d.f),itemStyle:{color:'rgba(183,121,31,0.6)'}},
+      {name:'双错',type:'bar',stack:'o',data:sel.map(d=>d.l),itemStyle:{color:'rgba(196,68,74,0.7)'}}
     ]
   }, {notMerge:true});
   summarize(sel);
@@ -445,10 +467,10 @@ function drawBurstHour(sel) {
       return `${h}时 · ${items.length}次` + items.map(b => `<br/>${b[0]} ${b[1].slice(0,5)} · 日盈亏${b[2] >= 0 ? '+' : ''}${FMT.format(b[2])}`).join('');
     }}),
     grid:{left:40,right:16,top:16,bottom:36},
-    xAxis:{type:'category',data:hours.map(h=>h+'时'),axisLabel:{color:'#888',fontSize:10,interval:1},axisLine:{lineStyle:{color:'#333'}}},
-    yAxis:{type:'value',minInterval:1,axisLabel:{color:'#888',fontSize:10},splitLine:{lineStyle:{color:'#222'}}},
-    series:[{type:'bar',data:counts.map((v,i)=>({value:v,itemStyle:{color:v>0?'#ee6666':'#2a2e3d'}})),barMaxWidth:20,
-      label:{show:true,position:'top',color:'#aaa',fontSize:10,formatter: p => p.value > 0 ? p.value : ''}}]
+    xAxis:{type:'category',data:hours.map(h=>h+'时'),axisLabel:{color:'#8b8b91',fontSize:12,interval:1},axisLine:{lineStyle:{color:'#e2e3e6'}}},
+    yAxis:{type:'value',minInterval:1,axisLabel:{color:'#8b8b91',fontSize:12},splitLine:{lineStyle:{color:'#ecedef'}}},
+    series:[{type:'bar',data:counts.map((v,i)=>({value:v,itemStyle:{color:v>0?'#c4444a':'#eef0f2'}})),barMaxWidth:20,
+      label:{show:true,position:'top',color:'#5c5c62',fontSize:12,formatter: p => p.value > 0 ? p.value : ''}}]
   }, {notMerge:true});
 }
 
@@ -472,14 +494,14 @@ function drawDrill(date) {
       const i=safeIdx(p); if (i<0 || i>=pts.length) return '';
       const pt=pts[i];
       return `${pt[0]} · 累计 ${sgn(pt[1])}${FMT.format(pt[1])} · ${RES[pt[4]]}${pt[3]>=0?' · L'+pt[3]:''}`; }}),
-    legend:{textStyle:{color:'#aaa',fontSize:11},top:0},
+    legend:{textStyle:{color:'#5c5c62',fontSize:13},top:0},
     grid:{left:70,right:20,top:30,bottom:40},
-    xAxis:{type:'category',data:pts.map(p=>p[0].slice(6)),axisLabel:{color:'#888',fontSize:10,interval:Math.max(0,Math.floor(pts.length/8)-1)},axisLine:{lineStyle:{color:'#333'}}},
-    yAxis:[{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
-           {type:'value',min:0,max:6,interval:1,axisLabel:{color:'#888',fontSize:11},splitLine:{show:false}}],
+    xAxis:{type:'category',data:pts.map(p=>p[0].slice(6)),axisLabel:{color:'#8b8b91',fontSize:12,interval:Math.max(0,Math.floor(pts.length/8)-1)},axisLine:{lineStyle:{color:'#e2e3e6'}}},
+    yAxis:[{type:'value',axisLabel:{color:'#8b8b91',fontSize:13,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#ecedef'}}},
+           {type:'value',min:0,max:6,interval:1,axisLabel:{color:'#8b8b91',fontSize:13},splitLine:{show:false}}],
     series:[
-      {name:'累计盈亏',type:'line',data:pts.map(p=>p[1]),smooth:false,symbol:'none',lineStyle:{color:'#91cc75',width:1.8}},
-      {name:'档位',type:'line',yAxisIndex:1,data:pts.map(p=>p[3]>=0?p[3]:null),step:'end',smooth:false,symbol:'none',lineStyle:{color:'#5470c6',width:1.5}}
+      {name:'累计盈亏',type:'line',data:pts.map(p=>p[1]),smooth:false,symbol:'none',lineStyle:{color:'#2f855a',width:1.8}},
+      {name:'档位',type:'line',yAxisIndex:1,data:pts.map(p=>p[3]>=0?p[3]:null),step:'end',smooth:false,symbol:'none',lineStyle:{color:'#2c5282',width:1.5}}
     ]
   }, {notMerge:true});
 }
@@ -565,18 +587,15 @@ async function refreshStatus() {
     const s = await res.json();
     $('sRows').textContent = (s.total_rows != null) ? FMT.format(s.total_rows) : '-';
     $('sMax').textContent = s.max_nbr ? s.max_nbr + ' (' + s.max_date + ')' : '-';
-    $('sUpd').textContent = s.last_update || '-';
+    // 兼容两种 status 返回: server.py 有 last_update/last_count, api_server.py 有 server_time
+    $('sUpd').textContent = s.last_update || s.server_time || '-';
     $('sCnt').textContent = (s.last_count != null) ? s.last_count : '-';
-    $('sAuto').textContent = s.auto_update ? '开' : '关';
-    $('sAuto').className = s.auto_update ? 'ok' : 'err';
-    let dotCls = 'run', txt = s.last_result || '未知';
-    if (s.last_result === 'ok') { dotCls = 'on'; txt = '正常'; }
-    else if (s.last_result === 'running') { dotCls = 'run'; txt = '采集中'; }
-    else if (s.last_result && s.last_result !== 'ok') { dotCls = 'off'; txt = s.last_result; }
+    // 状态点: 有数据即正常, 无数据即异常
+    let dotCls = 'on', txt = '正常';
+    if (s.total_rows == null || s.total_rows === 0) { dotCls = 'off'; txt = '无数据'; }
     $('sDot').className = 'dot ' + dotCls;
     $('sState').textContent = txt;
-    $('btnToggle').textContent = s.auto_update ? '暂停自动' : '开启自动';
-    // 有新数据则重载图表
+    // 检测到新数据则重载图表
     if (s.max_nbr != null && lastMaxNbr != null && s.max_nbr > lastMaxNbr) {
       await reloadData();
     }
@@ -596,23 +615,6 @@ async function reloadData() {
   } catch(e) { console.error('reload', e); }
 }
 
-async function doUpdateNow() {
-  $('sDot').className = 'dot run';
-  $('sState').textContent = '采集中…';
-  try {
-    await fetch('/api/update', {cache:'no-store'});
-    await refreshStatus();
-    await reloadData();
-  } catch(e) { $('sState').textContent = '采集失败'; }
-}
-
-async function toggleAuto() {
-  try {
-    await fetch('/api/toggle-auto', {method:'POST', cache:'no-store'});
-    await refreshStatus();
-  } catch(e) {}
-}
-
 async function init() {
   try {
     await loadData();
@@ -624,18 +626,17 @@ async function init() {
     document.querySelector('.preset[data-days="all"]').classList.add('active');
     applyRange();
   } catch(e) {
-    $('subtitle').textContent = '数据加载失败: ' + e.message + ' (请确认 server.py 已启动)';
+    $('subtitle').textContent = '数据加载失败: ' + e.message + ' (请确认服务器已启动)';
     $('sDot').className = 'dot off';
     $('sState').textContent = '加载失败';
     return;
   }
   await refreshStatus();
+  // 每 30 秒检查一次数据库是否有新数据, 有则自动重载图表
   autoTimer = setInterval(refreshStatus, 30000);
 }
 
-$('btnRefresh').onclick = doUpdateNow;
 $('btnReload').onclick = reloadData;
-$('btnToggle').onclick = toggleAuto;
 
 init();
 </script>

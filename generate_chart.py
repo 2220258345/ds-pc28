@@ -128,6 +128,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   .chart h3 { font-size:13px; color:#ccc; font-weight:500; margin:2px 0 6px 4px; }
   .chart div { width:100%; height:280px; }
   .chart.tall div { height:320px; }
+  .chart.strip div { height:64px; }
   @media (max-width:640px) { .chart div { height:220px; } .chart.tall div { height:260px; } }
 </style>
 </head>
@@ -148,6 +149,7 @@ TEMPLATE = r"""<!DOCTYPE html>
 <div class="summary" id="summary"></div>
 
 <div class="chart"><h3>累计盈亏曲线（炸次红色标记）</h3><div id="equity"></div></div>
+<div class="chart strip"><h3>炸次分布（每天炸几次）</h3><div id="burststrip"></div></div>
 <div class="chart"><h3>每日盈亏</h3><div id="daily"></div></div>
 <div class="chart"><h3>回撤曲线（相对区间峰值）</h3><div id="drawdown"></div></div>
 <div class="chart"><h3>每日 双中 / 平局 / 双错</h3><div id="outcomes"></div></div>
@@ -172,7 +174,7 @@ $('to').value = DAYS[DAYS.length-1];
 $('subtitle').textContent = `数据 ${cfg.first_date} ~ ${cfg.last_date} | ${days.length}天 | ${cfg.bets.toLocaleString()}注 | 梯度[${cfg.ladder.join(',')}] 止盈+${cfg.stop_profit}`;
 
 const charts = {};
-['equity','daily','drawdown','outcomes','drilldown'].forEach(id => {
+['equity','burststrip','daily','drawdown','outcomes','drilldown'].forEach(id => {
   charts[id] = echarts.init($(id), null, {renderer:'canvas'});
 });
 window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
@@ -234,6 +236,19 @@ function drawAll(sel) {
     series:[{type:'line',data:cum,smooth:true,symbol:'none',lineStyle:{color:'#91cc75',width:2},areaStyle:{color:'rgba(145,204,117,0.12)'},
       markPoint:{symbol:'pin',symbolSize:22,data:burstIdx.map(b=>({coord:b.value,value:b.times,itemStyle:{color:'#ee6666'},
         label:{show:true,formatter:'{c}',color:'#fff',fontSize:9,position:'inside'}}))}}]
+  }, {notMerge:true});
+
+  const bmax = Math.max(1, ...sel.map(d=>d.br));
+  charts.burststrip.setOption({
+    tooltip:Object.assign({}, TT, { formatter:p=>{
+      const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
+      const d=sel[i];
+      return `${dates[i]} · 炸 ${d.br} 次`; }}),
+    grid:{left:70,right:20,top:6,bottom:20},
+    xAxis:{type:'category',data:dates,axisLabel:{show:false},axisLine:{lineStyle:{color:'#333'}}},
+    yAxis:{type:'value',min:0,max:bmax,interval:1,show:false},
+    series:[{type:'bar',data:sel.map(d=>d.br>0?d.br:null),barMaxWidth:10,
+      itemStyle:{color:'#ee6666',borderRadius:[2,2,0,0]}}]
   }, {notMerge:true});
 
   charts.daily.setOption({

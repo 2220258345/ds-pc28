@@ -177,6 +177,15 @@ const charts = {};
 });
 window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
 
+// 从 tooltip 参数里取安全的数据索引 (markPoint 参数没有 dataIndex)
+function safeIdx(p) {
+  for (const q of p) {
+    if (Number.isInteger(q.dataIndex) && q.dataIndex >= 0) return q.dataIndex;
+  }
+  return -1;
+}
+const TT = { trigger:'axis', confine:true, backgroundColor:'#252836', borderColor:'#333', textStyle:{color:'#e0e0e0'} };
+
 function dateRange(daysArr) {
   const from = $('from').value, to = $('to').value;
   return daysArr.filter(d => d >= from && d <= to);
@@ -207,20 +216,28 @@ function drawAll(sel) {
   sel.forEach((d,i) => { if (d.br>0) burstIdx.push({value:[dates[i], cum[i]], times:d.br}); });
 
   charts.equity.setOption({
-    tooltip: { trigger:'axis', backgroundColor:'#252836', borderColor:'#333', textStyle:{color:'#e0e0e0'},
-      formatter: p => { const i=p[0].dataIndex; const d=sel[i];
-        return `${dates[i]}<br>累计盈亏: ${cum[i]>=0?'+':''}${FMT.format(cum[i])}<br>当日: ${d.p>=0?'+':''}${FMT.format(d.p)}`; } },
+    tooltip: Object.assign({}, TT, { formatter: p => {
+      const i = safeIdx(p);
+      if (i < 0 || i >= sel.length) return '';
+      const d = sel[i];
+      let s = `${dates[i]}<br>累计盈亏: ${cum[i]>=0?'+':''}${FMT.format(cum[i])}<br>当日: ${d.p>=0?'+':''}${FMT.format(d.p)}`;
+      if (d.br > 0) s += `<br><b style="color:#ee6666">炸 ${d.br} 次</b>`;
+      return s;
+    } }),
     grid:{left:70,right:20,top:25,bottom:55},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
     dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#333',backgroundColor:'#1a1d29',dataBackground:{lineStyle:{color:'#444'},areaStyle:{color:'#2a2e3d'}},selectedDataBackground:{lineStyle:{color:'#5470c6'},areaStyle:{color:'#5470c6'}}}],
     series:[{type:'line',data:cum,smooth:true,symbol:'none',lineStyle:{color:'#91cc75',width:2},areaStyle:{color:'rgba(145,204,117,0.12)'},
-      markPoint:{symbol:'pin',symbolSize:34,data:burstIdx.map(b=>({coord:b.value,itemStyle:{color:'#ee6666'},label:{show:true,formatter:()=>''},tooltip:null}))}}]
+      markPoint:{symbol:'pin',symbolSize:36,data:burstIdx.map(b=>({coord:b.value,value:b.times,itemStyle:{color:'#ee6666'},
+        label:{show:true,formatter:'{c}',color:'#fff',fontSize:10,position:'inside'}}))}}]
   }, {notMerge:true});
 
   charts.daily.setOption({
-    tooltip:{trigger:'axis',backgroundColor:'#252836',borderColor:'#333',textStyle:{color:'#e0e0e0'},
-      formatter:p=>{const d=sel[p[0].dataIndex];return `${dates[p[0].dataIndex]}<br>盈亏: ${d.p>=0?'+':''}${FMT.format(d.p)}<br>下注: ${d.b} 双中${d.w}/平局${d.f}/双错${d.l} 炸${d.br}`;}},
+    tooltip:Object.assign({}, TT, { formatter:p=>{
+      const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
+      const d=sel[i];
+      return `${dates[i]}<br>盈亏: ${d.p>=0?'+':''}${FMT.format(d.p)}<br>下注: ${d.b} 双中${d.w}/平局${d.f}/双错${d.l} 炸${d.br}`; }}),
     grid:{left:70,right:20,top:25,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
@@ -230,8 +247,9 @@ function drawAll(sel) {
   let peak=-Infinity, c2=0;
   const dd = sel.map(d => { c2+=d.p; peak=Math.max(peak,c2); return Math.max(0, peak-c2); });
   charts.drawdown.setOption({
-    tooltip:{trigger:'axis',backgroundColor:'#252836',borderColor:'#333',textStyle:{color:'#e0e0e0'},
-      formatter:p=>`${dates[p[0].dataIndex]}<br>回撤: ${FMT.format(p[0].value)}`},
+    tooltip:Object.assign({}, TT, { formatter:p=>{
+      const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
+      return `${dates[i]}<br>回撤: ${FMT.format(dd[i])}`; }}),
     grid:{left:70,right:20,top:25,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
@@ -239,7 +257,7 @@ function drawAll(sel) {
   }, {notMerge:true});
 
   charts.outcomes.setOption({
-    tooltip:{trigger:'axis',backgroundColor:'#252836',borderColor:'#333',textStyle:{color:'#e0e0e0'}},
+    tooltip:Object.assign({}, TT),
     legend:{textStyle:{color:'#aaa',fontSize:11},top:0},
     grid:{left:70,right:20,top:30,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
@@ -265,9 +283,10 @@ function drawDrill(date) {
   const pts = periods.filter(p => p[0].startsWith(date));
   if (!pts.length) return;
   charts.drilldown.setOption({
-    tooltip:{trigger:'axis',backgroundColor:'#252836',borderColor:'#333',textStyle:{color:'#e0e0e0'},
-      formatter:p=>{const i=p[0].dataIndex;const pt=pts[i];
-        return `${pt[0]}<br>累计: ${pt[1]>=0?'+':''}${FMT.format(pt[1])}<br>当日: ${pt[2]>=0?'+':''}${FMT.format(pt[2])}<br>档位: ${pt[3]>=0?'L'+pt[3]:'-'} ${RES[pt[4]]}`;}},
+    tooltip:Object.assign({}, TT, { formatter:p=>{
+      const i=safeIdx(p); if (i<0 || i>=pts.length) return '';
+      const pt=pts[i];
+      return `${pt[0]}<br>累计: ${pt[1]>=0?'+':''}${FMT.format(pt[1])}<br>当日: ${pt[2]>=0?'+':''}${FMT.format(pt[2])}<br>档位: ${pt[3]>=0?'L'+pt[3]:'-'} ${RES[pt[4]]}`; }}),
     legend:{textStyle:{color:'#aaa',fontSize:11},top:0},
     grid:{left:70,right:20,top:30,bottom:40},
     xAxis:{type:'category',data:pts.map(p=>p[0].slice(6)),axisLabel:{color:'#888',fontSize:10,interval:Math.max(0,Math.floor(pts.length/8)-1)},axisLine:{lineStyle:{color:'#333'}}},

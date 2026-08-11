@@ -134,10 +134,11 @@ def load_draws(filter_date=None):
 # ============================================================
 
 def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_LOSS,
-                 detail=False):
+                 detail=False, reverse=False):
     """
     回测引擎。
     每期流程: 结算上期待结算注单 -> 检查风控 -> 预测下期并下注。
+    reverse=True 时反向投注 (押 E9 预测的反面)。
     返回: dict(总盈亏, 回撤, 每日统计, [逐期明细])
     """
     level = 0
@@ -267,6 +268,11 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
         else:
             amount = ladder[level]
             dx_str, ds_str, pdx, pds = predict_e9(c1, c2, c3, amount)
+            if reverse:
+                pdx = "小" if pdx == "大" else "大"
+                pds = "单" if pds == "双" else "双"
+                dx_str = f"{pdx}{amount}"
+                ds_str = f"{pds}{amount}"
             b_pred = f"{pdx}{pds}"
             b_amt = str(amount)
             b_level = f"L{level}"

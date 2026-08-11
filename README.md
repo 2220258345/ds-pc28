@@ -88,6 +88,9 @@ E9 的统计优势：双中率 25.3% > 双错率 24.7%（每注期望 +0.89，�
 | `backtest_chart.html` | E9 回测图表仪表盘（曲线+时间筛选+按日下钻） |
 | `backtest_daily.html` | 回测生成的每日统计 |
 | `backtest_today.html` | 回测生成的今日逐期明细 |
+| `server.py` | HTTP 服务器 + 后台定时采集（端口/间隔可配置） |
+| `collector.py` | 多源采集器（4 个 API 故障切换 + 增量/全量更新） |
+| `Dockerfile` / `docker-compose.yml` / `.dockerignore` | Docker 部署配置 |
 
 ## 六、回测脚本使用
 
@@ -145,3 +148,102 @@ STOP_LOSS = None     # 止损（None=不设）
 | `combination_type` | TEXT | 组合（大双/小单/...） |
 
 更新数据后执行 `python db_setup.py --verify` 可校验完整性（数量、主键唯一、和值、期号连续）。
+
+## 七、Docker 部署（推荐）
+
+通过 Docker 一键启动仪表盘服务，自动后台定时采集最新数据。
+
+### 7.1 构建并启动
+
+```bash
+docker compose up -d --build
+```
+
+启动后访问 http://localhost:8000/ 即可看到回测图表仪表盘。
+
+### 7.2 服务说明
+
+- **镜像**：基于 `python:3.10-slim`，全部使用 Python 标准库，**无需 pip 安装**
+- **入口**：`python -u server.py --port 8000`
+- **采集**：后台线程每 4 分钟增量采集（多源故障切换，含限流重试）
+- **API**：
+  - `GET /` 仪表盘页面（`backtest_chart.html`）
+  - `GET /api/draws` 全量开奖数据 JSON
+  - `GET /api/status` 采集器状态
+  - `POST /api/update` 立即触发采集
+  - `POST /api/toggle` 暂停/恢复自动采集
+- **数据持久化**：命名卷 `pc28_data` 挂载到 `/app/data`（SQLite 数据库存放于此）
+
+### 7.3 常用命令
+
+```bash
+docker compose up -d --build   # 构建并后台启动
+docker compose logs -f         # 查看实时日志
+docker compose ps               # 查看运行状态
+docker compose restart         # 重启服务
+docker compose down            # 停止并移除容器（卷保留）
+docker compose down -v         # 停止并删除数据卷（清空数据库）
+```
+
+### 7.4 调整端口 / 采集间隔
+
+修改 `docker-compose.yml` 的 `ports` 调整端口映射：
+
+```yaml
+ports:
+  - "9000:8000"   # 宿主机 9000 -> 容器 8000
+```
+
+采集间隔通过环境变量或命令参数调整（默认 4 分钟）：
+
+```yaml
+command: ["python", "-u", "server.py", "--port", "8000", "--interval", "2"]
+```
+
+### 7.5 数据备份 / 迁移
+
+```bash
+# 备份数据库到宿主机当前目录
+docker cp pc28-dashboard:/app/data/pc28_history.db ./pc28_history.db.bak
+
+# 从备份恢复
+docker cp ./pc28_history.db.bak pc28-dashboard:/app/data/pc28_history.db
+docker compose restart
+```
+
+### 7.6 首次使用（空数据库）
+
+容器首次启动时数据库为空，后台采集器会自动从 `wh28.com` 拉取最新 100 期并入库。
+如需全量回补历史数据，进入容器手动执行：
+
+```bash
+docker exec -it pc28-dashboard python collector.py --full 30000
+```
+
+### 7.7 本地直接运行（无 Docker）
+
+```bash
+python server.py                      # 默认 8000 端口, 4分钟采集间隔
+python server.py --port 9000          # 指定端口
+python server.py --interval 2         # 2分钟采集间隔
+```
+
+## 八、采集器说明
+
+`collector.py` 支持 4 个 API 数据源，自动故障切换：
+
+| 数据源 | 地址 | 期数 | 限流 | 用途 |
+|--------|------|------|------|------|
+| `pc28.help` CSV | `pc28.help` | 最多 30000 | 有 | 全量回补 |
+| `www.pc28.help` | pc28.help 镜像 | 最多 30000 | 限流策略不同 | 备用全量 |
+| `wh28.com` history | `wh28.com` | 最新 100 | 无 | 增量更新（优先） |
+| `wh28.com` trend | `wh28.com` | 最新 30 | 无 | 备用增量 |
+
+```bash
+python collector.py                 # 增量更新 (优先 wh28, 失败切 pc28)
+python collector.py --full 5000     # 全量拉取 5000 期
+python collector.py --full 30000    # 全量拉取最大 30000 期
+python collector.py --source wh28   # 指定数据源
+python collector.py --test          # 测试所有数据源连通性
+python collector.py --verify        # 校验数据库
+```

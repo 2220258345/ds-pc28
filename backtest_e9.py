@@ -50,7 +50,7 @@ from datetime import datetime
 # ============================================================
 # 配置区
 # ============================================================
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pc28_history.db")
+DB_PATH = os.path.join(os.environ.get("DB_DIR", os.path.dirname(os.path.abspath(__file__))), "pc28_history.db")
 
 # 梯度 (7级, 2x全额回收, 最大注1280, 资金需求~2560)
 LADDER = [20, 40, 80, 160, 320, 640, 1280]

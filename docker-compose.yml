@@ -1,0 +1,15 @@
+services:
+  pc28:
+    build: .
+    container_name: pc28-dashboard
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_DIR=/app/data
+      - TZ=Asia/Shanghai
+    volumes:
+      - pc28_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  pc28_data:

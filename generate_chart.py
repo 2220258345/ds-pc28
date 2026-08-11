@@ -3,7 +3,7 @@
 生成 E9 回测交互式图表仪表盘 backtest_chart.html
 ============================================================
 功能:
-  - 4 种配置切换: 正投/反投 × 止盈(+2500)/无止盈
+  - 自定义止盈/止损, 正投/反投, 前端实时回测
   - 累计盈亏 / 炸次分布 / 每日盈亏 / 回撤 / 双中平局双错 / 按日下钻
   - 时间范围选择: 预设 (全部/近3月/近30天/近7天) + 自定义起止日期
   - 区间汇总统计 (盈亏/盈利天/炸次/最大回撤/收益回撤比)
@@ -11,99 +11,18 @@
 用法:
   python generate_chart.py
 """
-import json
 import os
-
-from backtest_e9 import LADDER, STOP_PROFIT, load_draws, run_backtest
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(BASE, "backtest_chart.html")
 
-# (key, 显示名, 止盈, 是否反投)
-CONFIGS = [
-    ("pos_sp",   "正投 · 止盈+2500", 2500, False),
-    ("pos_nosp", "正投 · 无止盈",    None, False),
-    ("rev_sp",   "反投 · 止盈+2500", 2500, True),
-    ("rev_nosp", "反投 · 无止盈",    None, True),
-]
-
-
-def period_arrays(events):
-    """逐期数据: 总累计 / 当日累计 / 档位 / 结果编码。"""
-    c, d, l, r = [], [], [], []
-    total = 0
-    for ev in events:
-        pnl = 0
-        if ev["s_pnl"]:
-            try:
-                pnl = int(ev["s_pnl"])
-            except ValueError:
-                pnl = 0
-        total += pnl
-        c.append(total)
-        d.append(ev["daily_pnl"])
-        lvl = ev["b_level"].lstrip("L") if ev["b_level"] else ""
-        l.append(int(lvl) if lvl.isdigit() else -1)
-        res = 4
-        s = ev["s_result"]
-        if s:
-            if "炸" in s:
-                res = 3
-            elif s == "双中":
-                res = 0
-            elif s == "平局":
-                res = 1
-            elif "双错" in s:
-                res = 2
-        r.append(res)
-    return c, d, l, r
-
 
 def build():
-    draws = load_draws()
-    print(f"已加载 {len(draws)} 期数据")
-    times = [f"{d[1]} {d[2][:5]}" for d in draws]
-    configs = {}
-    for key, label, sp, rev in CONFIGS:
-        r = run_backtest(draws, ladder=LADDER, stop_profit=sp, detail=True, reverse=rev)
-        days = []
-        cum = 0
-        for d in sorted(r["daily"]):
-            info = r["daily"][d]
-            cum += info["pnl"]
-            days.append({
-                "d": d, "p": info["pnl"], "b": info["bets"],
-                "w": info["win"], "f": info["flat"], "l": info["lose"],
-                "br": info["bursts"], "ml": info["max_level"], "c": cum,
-            })
-        c, dd, lv, rc = period_arrays(r["events"])
-        configs[key] = {
-            "label": label,
-            "days": days,
-            "c": c, "d": dd, "l": lv, "r": rc,
-            "meta": {
-                "ladder": LADDER,
-                "stop_profit": sp,
-                "total_pnl": r["total_pnl"],
-                "max_drawdown": r["max_drawdown"],
-                "ratio": r["ratio"],
-                "bursts": r["bursts"],
-                "bets": r["total_bets"],
-                "win": r["win"],
-                "flat": r["flat"],
-                "lose": r["lose"],
-                "profit_days": r["profit_days"],
-                "loss_days": r["loss_days"],
-            },
-        }
-        print(f"  {label}: 盈亏 {r['total_pnl']:+,} 炸 {r['bursts']} 下注 {r['total_bets']}")
-
-    payload = {"times": times, "default": "pos_sp", "configs": configs}
-    data_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    html = TEMPLATE.replace("/*__DATA__*/", data_json)
+    # 数据由前端运行时从 /api/draws 动态获取, 此处仅生成静态模板
     with open(OUT, "w", encoding="utf-8") as f:
-        f.write(html)
-    print(f"图表已生成: {OUT} ({len(html)/1024/1024:.1f} MB)")
+        f.write(TEMPLATE)
+    print(f"图表模板已生成: {OUT} ({len(TEMPLATE)/1024:.1f} KB)")
+    print("提示: 运行 server.py 后访问 http://localhost:8000/ 即可, 数据自动从 /api/draws 加载")
 
 
 TEMPLATE = r"""<!DOCTYPE html>
@@ -115,57 +34,103 @@ TEMPLATE = r"""<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:-apple-system,"Microsoft YaHei",sans-serif; background:#0f1117; color:#e0e0e0; padding:16px; }
-  h1 { font-size:20px; color:#fff; margin-bottom:4px; }
-  .sub { font-size:12px; color:#888; margin-bottom:14px; }
-  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
-  .controls label { font-size:12px; color:#aaa; margin:0 2px 0 8px; }
-  .controls label:first-child { margin-left:0; }
-  .controls input[type=date] { background:#1a1d29; color:#e0e0e0; border:1px solid #333; border-radius:6px; padding:5px 8px; font-size:12px; }
-  .preset { background:#1a1d29; color:#aaa; border:1px solid #333; border-radius:6px; padding:6px 12px; font-size:12px; cursor:pointer; }
-  .preset:hover { border-color:#5470c6; color:#fff; }
+  body { font-family:-apple-system,"Microsoft YaHei",sans-serif; background:#0f1117; color:#e0e0e0; padding:12px; }
+  h1 { font-size:18px; color:#fff; margin-bottom:4px; }
+  .sub { font-size:11px; color:#888; margin-bottom:6px; line-height:1.5; }
+  .status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:#1a1d29; border:1px solid #2a2e3d; border-radius:8px; padding:6px 10px; margin-bottom:10px; font-size:11px; color:#aaa; }
+  .status .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+  .status .dot.on { background:#91cc75; } .status .dot.off { background:#ee6666; } .status .dot.run { background:#fac858; }
+  .status .btn { background:#2a2e3d; color:#e0e0e0; border:1px solid #444; border-radius:6px; padding:3px 10px; font-size:11px; cursor:pointer; }
+  .status .btn:hover { border-color:#5470c6; color:#fff; }
+  .status .sp { color:#e0e0e0; }
+  .status .ok { color:#91cc75; } .status .err { color:#ee6666; }
+  .controls { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+  .ctrl-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .ctrl-row label { font-size:11px; color:#aaa; margin:0 2px 0 0; }
+  .ctrl-row label:first-child { min-width:28px; }
+  .controls input[type=date], .controls input[type=number] { background:#1a1d29; color:#e0e0e0; border:1px solid #333; border-radius:6px; padding:5px 8px; font-size:12px; width:74px; }
+  .preset { background:#1a1d29; color:#aaa; border:1px solid #333; border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .preset:hover,.preset:active { border-color:#5470c6; color:#fff; }
   .preset.active { background:#5470c6; color:#fff; border-color:#5470c6; }
-  .summary { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
-  .s-card { background:#1a1d29; border-radius:8px; padding:8px 14px; min-width:88px; }
-  .s-card .label { font-size:11px; color:#888; margin-bottom:2px; }
-  .s-card .val { font-size:17px; font-weight:600; }
+  .summary { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .s-card { background:#1a1d29; border-radius:8px; padding:6px 10px; min-width:78px; flex:1; text-align:center; }
+  .s-card .label { font-size:10px; color:#888; margin-bottom:1px; }
+  .s-card .val { font-size:15px; font-weight:600; }
   .pos { color:#91cc75; } .neg { color:#ee6666; } .flat { color:#fac858; }
-  .chart { background:#1a1d29; border-radius:10px; padding:10px; margin-bottom:12px; }
-  .chart h3 { font-size:13px; color:#ccc; font-weight:500; margin:2px 0 6px 4px; }
-  .chart div { width:100%; height:280px; }
-  .chart.tall div { height:320px; }
-  .chart.strip div { height:64px; }
-  @media (max-width:640px) { .chart div { height:220px; } .chart.tall div { height:260px; } }
+  .chart { background:#1a1d29; border-radius:10px; padding:8px; margin-bottom:10px; }
+  .chart h3 { font-size:12px; color:#ccc; font-weight:500; margin:2px 0 4px 4px; }
+  .chart div { width:100%; height:260px; }
+  .chart.tall div { height:300px; }
+  .chart.strip div { height:56px; }
+  select { -webkit-tap-highlight-color:transparent; }
+  @media (max-width:640px) {
+    body { padding:8px; }
+    h1 { font-size:16px; }
+    .sub { font-size:10px; }
+    .controls { gap:4px; }
+    .ctrl-row { gap:4px; }
+    .ctrl-row label { font-size:10px; }
+    .ctrl-row label:first-child { min-width:24px; }
+    .controls input[type=date], .controls input[type=number] { width:64px; padding:4px 6px; font-size:11px; }
+    .preset { padding:4px 8px; font-size:11px; }
+    .s-card { min-width:64px; padding:4px 6px; }
+    .s-card .label { font-size:9px; }
+    .s-card .val { font-size:13px; }
+    .chart { padding:6px; margin-bottom:8px; }
+    .chart h3 { font-size:11px; }
+    .chart div { height:200px; }
+    .chart.tall div { height:240px; }
+    .chart.strip div { height:48px; }
+  }
 </style>
 </head>
 <body>
 <h1>E9 回测图表仪表盘</h1>
-<div class="sub" id="subtitle"></div>
+<div class="sub" id="subtitle">数据加载中…</div>
+
+<div class="status" id="statusBar">
+  <span><span class="dot run" id="sDot"></span><span id="sState">加载中</span></span>
+  <span class="sp">库内 <b id="sRows">-</b> 期</span>
+  <span class="sp">最新 <b id="sMax">-</b></span>
+  <span class="sp">更新 <b id="sUpd">-</b></span>
+  <span class="sp">新增 <b id="sCnt">-</b></span>
+  <span class="sp" id="sAutoTxt">自动 <b id="sAuto">-</b></span>
+  <button class="btn" id="btnRefresh">立即采集</button>
+  <button class="btn" id="btnReload">重载图表</button>
+  <button class="btn" id="btnToggle">暂停自动</button>
+</div>
 
 <div class="controls">
-  <label>方向</label>
-  <button class="preset active" data-dir="pos">正投</button>
-  <button class="preset" data-dir="rev">反投</button>
-  <label>止盈</label>
-  <button class="preset active" data-spopt="sp">+2500</button>
-  <button class="preset" data-spopt="nosp">无止盈</button>
-  <label>区间</label>
-  <button class="preset" data-days="all">全部</button>
-  <button class="preset" data-days="90">近3月</button>
-  <button class="preset" data-days="30">近30天</button>
-  <button class="preset" data-days="7">近7天</button>
-  <label>从</label><input type="date" id="from">
-  <label>至</label><input type="date" id="to">
-  <button class="preset" id="apply">应用区间</button>
+  <div class="ctrl-row"><label>方向</label>
+    <button class="preset active" data-dir="pos">正投</button>
+    <button class="preset" data-dir="rev">反投</button>
+  </div>
+  <div class="ctrl-row"><label>止盈</label>
+    <input type="number" id="spInput" value="2500">
+    <button class="preset" id="spClear">无</button>
+    <label>止损</label>
+    <input type="number" id="slInput" placeholder="数值" min="0">
+  </div>
+  <div class="ctrl-row"><label>区间</label>
+    <button class="preset active" data-days="all">全部</button>
+    <button class="preset" data-days="90">近3月</button>
+    <button class="preset" data-days="30">近30天</button>
+    <button class="preset" data-days="7">近7天</button>
+  </div>
+  <div class="ctrl-row"><label>从</label><input type="date" id="from">
+    <label>至</label><input type="date" id="to">
+    <button class="preset" id="apply">应用区间</button>
+  </div>
 </div>
 
 <div class="summary" id="summary"></div>
 
-<div class="chart"><h3>累计盈亏曲线（炸次红色标记）</h3><div id="equity"></div></div>
+<div class="chart"><h3>累计盈亏曲线</h3><div id="equity"></div></div>
 <div class="chart strip"><h3>炸次分布（每天炸几次）</h3><div id="burststrip"></div></div>
 <div class="chart"><h3>每日盈亏</h3><div id="daily"></div></div>
 <div class="chart"><h3>回撤曲线（相对区间峰值）</h3><div id="drawdown"></div></div>
 <div class="chart"><h3>每日 双中 / 平局 / 双错</h3><div id="outcomes"></div></div>
+<div class="chart"><h3>炸的时间分布（24小时）</h3><div id="burstHour"></div></div>
 <div class="chart tall">
   <h3>当日逐期明细（选择日期下钻：累计盈亏 + 档位）</h3>
   <div style="margin:0 0 6px 4px;"><label>选择日期</label>
@@ -174,17 +139,10 @@ TEMPLATE = r"""<!DOCTYPE html>
 </div>
 
 <script>
-const DATA = /*__DATA__*/;
-const TIMES = DATA.times;
-const CFG = DATA.configs;
-
-// 日期 -> 逐期索引区间
-const dateIdx = {};
-TIMES.forEach((t, i) => {
-  const k = t.slice(0, 10);
-  if (!dateIdx[k]) dateIdx[k] = [i, i + 1];
-  else dateIdx[k][1] = i + 1;
-});
+let DATA = null, DRAWS = null, LADDER = null, C = null, TIMES = null;
+let dateIdx = {};
+let lastMaxNbr = null;       // 已加载的数据最新期号, 用于判断是否需要重载
+let autoTimer = null;        // 自动刷新定时器
 
 const $ = id => document.getElementById(id);
 const FMT = new Intl.NumberFormat('zh-CN');
@@ -192,15 +150,173 @@ const sgn = v => v >= 0 ? '+' : '';
 const RES = ['双中', '平局', '双错', '炸', '未下注'];
 const TT = { trigger:'axis', confine:true, backgroundColor:'#252836', borderColor:'#333',
   textStyle:{color:'#e0e0e0', fontSize:12}, padding:[4,8],
-  extraCssText:'max-width:420px;white-space:nowrap;' };
+  extraCssText:'display:inline-block !important;width:fit-content !important;height:auto !important;max-width:none !important;white-space:nowrap;' };
 
-let dir = 'pos', sp = 'sp';
-const cfgKey = () => dir + '_' + sp;
-const getCfg = () => CFG[cfgKey()];
-let days = getCfg().days;
+// ============ 回测引擎 (移植自 backtest_e9.py) ============
+function predictE9(c1, c2, c3) {
+  const s = c1 + c2 + c3;
+  const pdx = s <= 9 ? '大' : (s >= 18 ? '小' : (c1 <= 4 ? '大' : '小'));
+  const pds = c2 % 2 === 0 ? '双' : '单';
+  return [pdx, pds];
+}
+function actualResult(c1, c2, c3) {
+  const s = c1 + c2 + c3;
+  return [s >= C.BIG ? '大' : '小', s % 2 === 0 ? '双' : '单', C.COMM_SUMS.includes(s)];
+}
+function getRate(amount, comm) {
+  if (amount > C.HIGH_BET) return C.HIGH_RATE;
+  return comm ? C.COMM_RATE : 1.0;
+}
+function inMaintenance(date, timeStr) {
+  const dt = new Date(date + 'T' + timeStr);
+  const year = dt.getFullYear();
+  const mar1 = new Date(year, 2, 1);
+  const mar1Wd = (mar1.getDay() + 6) % 7;  // Python weekday()
+  const dstStartDay = 1 + (6 - mar1Wd) % 7 + 7;
+  const dstStart = new Date(year, 2, dstStartDay);
+  const nov1 = new Date(year, 10, 1);
+  const nov1Wd = (nov1.getDay() + 6) % 7;
+  const dstEndDay = 1 + (6 - nov1Wd) % 7;
+  const dstEnd = new Date(year, 10, dstEndDay);
+  const isSummer = dstStart <= dt && dt < dstEnd;
+  const sh = isSummer ? 19 : 20, sm = 0, eh = isSummer ? 19 : 20, em = 33;
+  const cur = dt.getHours() * 60 + dt.getMinutes();
+  return sh * 60 + sm <= cur && cur < eh * 60 + em;
+}
+
+function runBacktest(stopProfit, stopLoss, reverse) {
+  let level = 0, dailyPnl = 0, curDate = null, pauseUntilMs = 0;
+  let pending = null, totalPnl = 0, totalBets = 0;
+  let profitDays = 0, lossDays = 0, bursts = 0;
+  let tWin = 0, tFlat = 0, tLose = 0;
+  const daily = {};
+  const evS = [], evD = [], evL = [], evR = [];  // 逐期: 盈亏/当日/档位/结果
+  const burstTimes = [];  // 炸的时间点 [date, timeStr, dailyPnl]
+
+  for (let i = 0; i < DRAWS.length; i++) {
+    const [period, date, timeStr, c1, c2, c3] = DRAWS[i];
+    const [adx, ads, comm] = actualResult(c1, c2, c3);
+
+    if (date !== curDate) {
+      curDate = date;
+      if (dailyPnl > 0) profitDays++;
+      else if (dailyPnl < 0) lossDays++;
+      dailyPnl = 0;
+      level = 0;
+      pauseUntilMs = 0;
+      if (!daily[date]) daily[date] = {pnl:0, bets:0, win:0, flat:0, lose:0, max_level:0, bursts:0};
+    }
+    const day = daily[date];
+
+    let sResult = '', sPnl = 0;
+    if (pending) {
+      const [pDx, pDs, amount, pLevel] = pending;
+      const rate = getRate(amount, comm);
+      const dxOk = pDx === adx, dsOk = pDs === ads;
+      const win = amount * rate;
+      if (dxOk && dsOk) {
+        sPnl = Math.round(win * 2);
+        level = 0;
+        sResult = '双中';
+        tWin++; day.win++;
+      } else if (!dxOk && !dsOk) {
+        sPnl = -amount * 2;
+        tLose++; day.lose++;
+        if (pLevel >= LADDER.length - 1) {
+          level = 0; bursts++; day.bursts++; sResult = '炸';
+          burstTimes.push([date, timeStr, dailyPnl]);
+        } else {
+          level = pLevel + 1; sResult = '双错';
+        }
+      } else {
+        sPnl = Math.round((dxOk ? win : -amount) + (dsOk ? win : -amount));
+        sResult = '平局';
+        tFlat++; day.flat++;
+      }
+      dailyPnl += sPnl;
+      totalPnl += sPnl;
+      day.pnl += sPnl;
+      if (dxOk && dsOk) {
+        const [hh, mm] = timeStr.split(':').map(Number);
+        const cm = hh * 60 + mm;
+        if (18*60 <= cm && cm <= 18*60+50) {
+          pauseUntilMs = new Date(date + 'T19:40:00').getTime();
+        }
+      }
+      pending = null;
+    }
+
+    const dtMs = new Date(date + 'T' + timeStr).getTime();
+    let bLevel = -1;
+    if (inMaintenance(date, timeStr)) {
+      // 维护时段
+    } else if (pauseUntilMs && dtMs < pauseUntilMs) {
+      // 双中暂停
+    } else if (stopLoss !== null && dailyPnl <= stopLoss) {
+      // 止损
+    } else if (stopProfit !== null && dailyPnl >= stopProfit) {
+      // 止盈
+    } else {
+      const amount = LADDER[level];
+      let [pdx, pds] = predictE9(c1, c2, c3);
+      if (reverse) {
+        pdx = pdx === '大' ? '小' : '大';
+        pds = pds === '双' ? '单' : '双';
+      }
+      pending = [pdx, pds, amount, level];
+      totalBets++;
+      day.bets++;
+      day.max_level = Math.max(day.max_level, level);
+      bLevel = level;
+    }
+
+    evS.push(sPnl);
+    evD.push(dailyPnl);
+    evL.push(bLevel);
+    let res = 4;
+    if (sResult === '炸') res = 3;
+    else if (sResult === '双中') res = 0;
+    else if (sResult === '平局') res = 1;
+    else if (sResult === '双错') res = 2;
+    evR.push(res);
+  }
+  if (dailyPnl > 0) profitDays++;
+  else if (dailyPnl < 0) lossDays++;
+
+  // 累计
+  const cumArr = [];
+  let total = 0;
+  for (const p of evS) { total += p; cumArr.push(total); }
+
+  const days = [];
+  let cum = 0, dayPeak = -Infinity, dayMaxDd = 0;
+  for (const d of Object.keys(daily).sort()) {
+    const info = daily[d];
+    cum += info.pnl;
+    dayPeak = Math.max(dayPeak, cum);
+    dayMaxDd = Math.max(dayMaxDd, dayPeak - cum);
+    days.push({d, p:info.pnl, b:info.bets, w:info.win, f:info.flat, l:info.lose, br:info.bursts, ml:info.max_level, c:cum});
+  }
+
+  return {
+    days, c:cumArr, d:evD, l:evL, r:evR, burstTimes,
+    meta: {
+      ladder:LADDER, stop_profit:stopProfit, stop_loss:stopLoss,
+      total_pnl:totalPnl, max_drawdown:dayMaxDd,
+      ratio: dayMaxDd > 0 ? totalPnl/dayMaxDd : 0,
+      bursts, bets:totalBets, win:tWin, flat:tFlat, lose:tLose,
+      profit_days:profitDays, loss_days:lossDays
+    }
+  };
+}
+
+// ============ 图表 ============
+let dir = 'pos';
+let curCfg = null;
+let days = [];
 
 const charts = {};
-['equity','burststrip','daily','drawdown','outcomes','drilldown'].forEach(id => {
+['equity','burststrip','daily','drawdown','outcomes','burstHour','drilldown'].forEach(id => {
   charts[id] = echarts.init($(id), null, {renderer:'canvas'});
 });
 window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
@@ -220,21 +336,48 @@ function summarize(sel) {
   let cum = 0, peak = -Infinity, maxdd = 0;
   sel.forEach(d => { cum += d.p; peak = Math.max(peak, cum); maxdd = Math.max(maxdd, peak-cum); });
   const ratio = maxdd > 0 ? pnl/maxdd : 0;
+  // 统计: 连赢2次/连输2次段数 + 赢后立即输次数 (平局/未下注视为中断)
+  const st = calcStreaks(sel);
   $('summary').innerHTML = `
     <div class="s-card"><div class="label">区间盈亏</div><div class="val ${pnl>=0?'pos':'neg'}">${sgn(pnl)}${FMT.format(pnl)}</div></div>
     <div class="s-card"><div class="label">天数</div><div class="val">${sel.length}</div></div>
     <div class="s-card"><div class="label">盈/亏天</div><div class="val"><span class="pos">${winD}</span>/${lossD}</div></div>
     <div class="s-card"><div class="label">炸次</div><div class="val neg">${bursts}</div></div>
     <div class="s-card"><div class="label">最大回撤</div><div class="val neg">${FMT.format(maxdd)}</div></div>
-    <div class="s-card"><div class="label">收益/回撤</div><div class="val pos">${ratio.toFixed(2)}</div></div>`;
+    <div class="s-card"><div class="label">收益/回撤</div><div class="val pos">${ratio.toFixed(2)}</div></div>
+    <div class="s-card"><div class="label">连赢2次</div><div class="val pos">${st.win2}</div></div>
+    <div class="s-card"><div class="label">连输2次</div><div class="val neg">${st.loss2}</div></div>
+    <div class="s-card"><div class="label">赢→输</div><div class="val neg">${st.winThenLoss}</div></div>`;
+}
+
+// 统计连赢2次/连输2次段数 + 赢后立即输次数 (平局/未下注视为中断)
+function calcStreaks(sel) {
+  const r = {win2:0, loss2:0, winThenLoss:0};
+  if (!sel || !sel.length || !curCfg) return r;
+  let curWin = 0, curLoss = 0, prevWin = false;
+  const endWin = () => { if (curWin === 2) r.win2++; curWin = 0; };
+  const endLoss = () => { if (curLoss === 2) r.loss2++; curLoss = 0; };
+  for (const d of sel) {
+    const range = dateIdx[d.d];
+    if (!range) continue;
+    for (let i = range[0]; i < range[1]; i++) {
+      const v = curCfg.r[i];
+      if (v === 0) {
+        endLoss(); curWin++; prevWin = true;
+      } else if (v === 2 || v === 3) {
+        endWin(); curLoss++;
+        if (prevWin) r.winThenLoss++;  // 前一注赢、本注输
+        prevWin = false;
+      } else { endWin(); endLoss(); prevWin = false; }  // 平局/未下注: 中断
+    }
+  }
+  return r;
 }
 
 function drawAll(sel) {
   const dates = sel.map(d=>d.d);
   const cum = []; let c = 0;
   sel.forEach(d => { c += d.p; cum.push(c); });
-  const burstIdx = [];
-  sel.forEach((d,i) => { if (d.br>0) burstIdx.push({value:[dates[i], cum[i]], times:d.br}); });
 
   charts.equity.setOption({
     tooltip: Object.assign({}, TT, { formatter: p => {
@@ -249,13 +392,11 @@ function drawAll(sel) {
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
     dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#333',backgroundColor:'#1a1d29',dataBackground:{lineStyle:{color:'#444'},areaStyle:{color:'#2a2e3d'}},selectedDataBackground:{lineStyle:{color:'#5470c6'},areaStyle:{color:'#5470c6'}}}],
-    visualMap:{show:false,seriesIndex:0,pieces:[{lte:0,color:'#ee6666'},{gt:0,color:'#91cc75'}]},
-    series:[{type:'line',data:cum,smooth:true,symbol:'none',lineStyle:{width:2},
+    visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#ee6666'},{gt:0,lte:1e15,color:'#91cc75'}]},
+    series:[{type:'line',data:cum,smooth:true,symbol:sel.length<=1?'circle':'none',symbolSize:8,lineStyle:{width:2},
       markLine:{symbol:'none',silent:true,lineStyle:{color:'#fac858',type:'dashed',width:1},
         label:{show:true,formatter:'0',position:'insideEndTop',color:'#888',fontSize:10},
-        data:[{yAxis:0}]},
-      markPoint:{symbol:'pin',symbolSize:22,data:burstIdx.map(b=>({coord:b.value,value:b.times,itemStyle:{color:'#ee6666'},
-        label:{show:true,formatter:'{c}',color:'#fff',fontSize:9,position:'inside'}}))}}]
+        data:[{yAxis:0}]}}]
   }, {notMerge:true});
 
   const bmax = Math.max(1, ...sel.map(d=>d.br));
@@ -279,7 +420,11 @@ function drawAll(sel) {
     grid:{left:70,right:20,top:25,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
-    series:[{type:'bar',data:sel.map(d=>({value:d.p,itemStyle:{color:d.p>=0?'rgba(145,204,117,0.75)':'rgba(238,102,102,0.75)'}})),barMaxWidth:18}]
+    visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#ee6666'},{gt:0,lte:1e15,color:'#91cc75'}]},
+    series:[{type:'line',data:sel.map(d=>d.p),smooth:true,symbol:'circle',symbolSize:4,lineStyle:{width:2},
+      markLine:{symbol:'none',silent:true,lineStyle:{color:'#fac858',type:'dashed',width:1},
+        label:{show:true,formatter:'0',position:'insideEndTop',color:'#888',fontSize:10},
+        data:[{yAxis:0}]}}]
   }, {notMerge:true});
 
   let peak=-Infinity, c2=0;
@@ -291,7 +436,7 @@ function drawAll(sel) {
     grid:{left:70,right:20,top:25,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
-    series:[{type:'line',data:dd,smooth:true,symbol:'none',lineStyle:{color:'#ee6666',width:1.5},areaStyle:{color:'rgba(238,102,102,0.18)'}}]
+    series:[{type:'line',data:dd,smooth:true,symbol:sel.length<=1?'circle':'none',symbolSize:8,lineStyle:{color:'#ee6666',width:1.5},areaStyle:{color:'rgba(238,102,102,0.18)'}}]
   }, {notMerge:true});
 
   charts.outcomes.setOption({
@@ -310,6 +455,28 @@ function drawAll(sel) {
     ]
   }, {notMerge:true});
   summarize(sel);
+  drawBurstHour(sel);
+}
+
+function drawBurstHour(sel) {
+  if (!sel || !sel.length) return;
+  const bt = curCfg.burstTimes.filter(b => b[0] >= sel[0].d && b[0] <= sel[sel.length-1].d);
+  const hours = Array.from({length:24}, (_,h) => h);
+  const counts = Array(24).fill(0);
+  bt.forEach(b => { counts[parseInt(b[1].slice(0,2))]++; });
+  charts.burstHour.setOption({
+    tooltip:Object.assign({}, TT, { formatter:p => {
+      const h = p[0].dataIndex;
+      const items = bt.filter(b => parseInt(b[1].slice(0,2)) === h);
+      if (!items.length) return `${h}时 · 0次`;
+      return `${h}时 · ${items.length}次` + items.map(b => `<br/>${b[0]} ${b[1].slice(0,5)} · 日盈亏${b[2] >= 0 ? '+' : ''}${FMT.format(b[2])}`).join('');
+    }}),
+    grid:{left:40,right:16,top:16,bottom:36},
+    xAxis:{type:'category',data:hours.map(h=>h+'时'),axisLabel:{color:'#888',fontSize:10,interval:1},axisLine:{lineStyle:{color:'#333'}}},
+    yAxis:{type:'value',minInterval:1,axisLabel:{color:'#888',fontSize:10},splitLine:{lineStyle:{color:'#222'}}},
+    series:[{type:'bar',data:counts.map((v,i)=>({value:v,itemStyle:{color:v>0?'#ee6666':'#2a2e3d'}})),barMaxWidth:20,
+      label:{show:true,position:'top',color:'#aaa',fontSize:10,formatter: p => p.value > 0 ? p.value : ''}}]
+  }, {notMerge:true});
 }
 
 function fillDaySel() {
@@ -323,7 +490,7 @@ function fillDaySel() {
 function drawDrill(date) {
   const range = dateIdx[date];
   if (!range) return;
-  const cfg = getCfg();
+  const cfg = curCfg;
   const pts = [];
   for (let i = range[0]; i < range[1]; i++) pts.push([TIMES[i], cfg.c[i], cfg.d[i], cfg.l[i], cfg.r[i]]);
   if (!pts.length) return;
@@ -346,26 +513,44 @@ function drawDrill(date) {
 
 function applyRange() {
   const from = $('from').value, to = $('to').value;
-  const sel = days.filter(d => d.d >= from && d.d <= to);
-  document.querySelectorAll('.preset[data-days]').forEach(b=>b.classList.remove('active'));
+  let sel;
+  if (!from || !to) {
+    sel = days;
+  } else {
+    sel = days.filter(d => d.d >= from && d.d <= to);
+  }
   drawAll(sel);
 }
 
-function setConfig() {
-  days = getCfg().days;
-  document.querySelectorAll('[data-dir]').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
-  document.querySelectorAll('[data-spopt]').forEach(b => b.classList.toggle('active', b.dataset.spopt === sp));
-  const m = getCfg().meta;
-  const all = CFG.pos_sp.days;
-  $('subtitle').textContent = `${getCfg().label} | 数据 ${all[0].d} ~ ${all[all.length-1].d} | ` +
-    `全期总盈亏 ${sgn(m.total_pnl)}${FMT.format(m.total_pnl)} · 炸 ${m.bursts} 次 · 最大回撤 ${FMT.format(m.max_drawdown)} | ` +
-    `梯度[${m.ladder.join(',')}]`;
+function rebuild() {
+  const sp = parseFloat($('spInput').value);
+  const sl = parseFloat($('slInput').value);
+  const stopProfit = (isNaN(sp) || sp === 0) ? null : sp;
+  const stopLoss = (isNaN(sl) || sl === 0) ? null : -Math.abs(sl);
+  const reverse = dir === 'rev';
+  curCfg = runBacktest(stopProfit, stopLoss, reverse);
+  days = curCfg.days;
+  const m = curCfg.meta;
+  const all = curCfg.days;
+  let label = reverse ? '反投' : '正投';
+  label += ' · 止盈' + (stopProfit !== null ? '+' + stopProfit : '无');
+  label += ' · 止损' + (stopLoss !== null ? stopLoss : '无');
+  $('subtitle').textContent = label + ' | 数据 ' + all[0].d + ' ~ ' + all[all.length-1].d + ' | ' +
+    '全期总盈亏 ' + sgn(m.total_pnl) + FMT.format(m.total_pnl) + ' · 炸 ' + m.bursts + ' 次 · 最大回撤 ' + FMT.format(m.max_drawdown) + ' | ' +
+    '梯度[' + m.ladder.join(',') + ']';
   applyRange();
   fillDaySel();
 }
 
-document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => { dir = b.dataset.dir; setConfig(); });
-document.querySelectorAll('[data-spopt]').forEach(b => b.onclick = () => { sp = b.dataset.spopt; setConfig(); });
+// 事件
+document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => {
+  dir = b.dataset.dir;
+  document.querySelectorAll('[data-dir]').forEach(x => x.classList.toggle('active', x === b));
+  rebuild();
+});
+$('spInput').addEventListener('input', rebuild);
+$('slInput').addEventListener('input', rebuild);
+$('spClear').onclick = () => { $('spInput').value = ''; rebuild(); };
 document.querySelectorAll('.preset[data-days]').forEach(btn => {
   btn.onclick = () => {
     const n = btn.dataset.days;
@@ -384,9 +569,102 @@ document.querySelectorAll('.preset[data-days]').forEach(btn => {
 });
 $('apply').onclick = applyRange;
 
-$('from').value = days[0].d;
-$('to').value = days[days.length-1].d;
-setConfig();
+// ============ 数据加载 / 状态 / 自动刷新 ============
+async function loadData() {
+  const res = await fetch('/api/draws', {cache:'no-store'});
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  DATA = await res.json();
+  DRAWS = DATA.draws;
+  LADDER = DATA.ladder;
+  C = DATA.C;
+  TIMES = DRAWS.map(d => d[1] + ' ' + d[2].slice(0,5));
+  dateIdx = {};
+  TIMES.forEach((t, i) => {
+    const k = t.slice(0, 10);
+    if (!dateIdx[k]) dateIdx[k] = [i, i + 1];
+    else dateIdx[k][1] = i + 1;
+  });
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch('/api/status', {cache:'no-store'});
+    const s = await res.json();
+    $('sRows').textContent = (s.total_rows != null) ? FMT.format(s.total_rows) : '-';
+    $('sMax').textContent = s.max_nbr ? s.max_nbr + ' (' + s.max_date + ')' : '-';
+    $('sUpd').textContent = s.last_update || '-';
+    $('sCnt').textContent = (s.last_count != null) ? s.last_count : '-';
+    $('sAuto').textContent = s.auto_update ? '开' : '关';
+    $('sAuto').className = s.auto_update ? 'ok' : 'err';
+    let dotCls = 'run', txt = s.last_result || '未知';
+    if (s.last_result === 'ok') { dotCls = 'on'; txt = '正常'; }
+    else if (s.last_result === 'running') { dotCls = 'run'; txt = '采集中'; }
+    else if (s.last_result && s.last_result !== 'ok') { dotCls = 'off'; txt = s.last_result; }
+    $('sDot').className = 'dot ' + dotCls;
+    $('sState').textContent = txt;
+    $('btnToggle').textContent = s.auto_update ? '暂停自动' : '开启自动';
+    // 有新数据则重载图表
+    if (s.max_nbr != null && lastMaxNbr != null && s.max_nbr > lastMaxNbr) {
+      await reloadData();
+    }
+    if (s.max_nbr != null) lastMaxNbr = s.max_nbr;
+  } catch(e) {
+    $('sDot').className = 'dot off';
+    $('sState').textContent = '状态获取失败';
+  }
+}
+
+async function reloadData() {
+  try {
+    await loadData();
+    lastMaxNbr = DRAWS.length ? DRAWS[DRAWS.length-1][0] : null;
+    rebuild();
+    applyRange();
+  } catch(e) { console.error('reload', e); }
+}
+
+async function doUpdateNow() {
+  $('sDot').className = 'dot run';
+  $('sState').textContent = '采集中…';
+  try {
+    await fetch('/api/update', {cache:'no-store'});
+    await refreshStatus();
+    await reloadData();
+  } catch(e) { $('sState').textContent = '采集失败'; }
+}
+
+async function toggleAuto() {
+  try {
+    await fetch('/api/toggle-auto', {method:'POST', cache:'no-store'});
+    await refreshStatus();
+  } catch(e) {}
+}
+
+async function init() {
+  try {
+    await loadData();
+    lastMaxNbr = DRAWS.length ? DRAWS[DRAWS.length-1][0] : null;
+    rebuild();
+    // 设置默认日期范围为全部, 并激活"全部"按钮
+    $('from').value = days[0].d;
+    $('to').value = days[days.length-1].d;
+    document.querySelector('.preset[data-days="all"]').classList.add('active');
+    applyRange();
+  } catch(e) {
+    $('subtitle').textContent = '数据加载失败: ' + e.message + ' (请确认 server.py 已启动)';
+    $('sDot').className = 'dot off';
+    $('sState').textContent = '加载失败';
+    return;
+  }
+  await refreshStatus();
+  autoTimer = setInterval(refreshStatus, 30000);
+}
+
+$('btnRefresh').onclick = doUpdateNow;
+$('btnReload').onclick = reloadData;
+$('btnToggle').onclick = toggleAuto;
+
+init();
 </script>
 </body>
 </html>

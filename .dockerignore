@@ -1,0 +1,15 @@
+pc28_history.db
+*.db
+__pycache__/
+*.pyc
+.git/
+*.png
+*.md
+backtest_daily.html
+backtest_today.html
+backtest_stops_grid.html
+db_setup.py
+strategy_search.py
+strategy_exploration_report.md
+fetch_update.py
+generate_chart.py

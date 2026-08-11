@@ -1,0 +1,195 @@
+# -*- coding: utf-8 -*-
+"""
+28数据分析服务器 (采集入口)
+============================================================
+- 提供 HTTP 服务 (静态文件 + API + SSE), 路由由 core.api_routes 提供
+- 后台线程定时采集最新数据 (默认每3.5分钟, 与开奖周期同步)
+- 采集到新数据时通过 SSE 推送给所有前端
+
+用法:
+  python server.py              # 默认 8000 端口, 3.5分钟采集间隔
+  python server.py --port 9000  # 指定端口
+  python server.py --interval 2 # 2分钟采集间隔
+"""
+import argparse
+import threading
+import time
+from datetime import datetime, timezone, timedelta
+from http.server import HTTPServer
+from socketserver import ThreadingMixIn
+
+from collector import fetch_with_failover, INCREMENTAL_ORDER, FULL_ORDER, insert_rows, verify
+from core import db, time_sync, sse, api_routes
+
+CN_TZ = timezone(timedelta(hours=8))
+
+# ========== 采集状态 (仅 server.py 维护) ==========
+_status = {
+    "last_update": None,
+    "last_result": None,
+    "last_count": 0,
+    "auto_update": True,
+    "interval_min": 4,
+    "total_rows": 0,
+}
+_lock = threading.Lock()
+
+
+def status_provider():
+    """供 api_routes 注入的状态查询函数。"""
+    with _lock:
+        return dict(_status)
+
+
+def toggle_auto():
+    """切换自动采集开关。"""
+    with _lock:
+        _status["auto_update"] = not _status["auto_update"]
+        return _status["auto_update"]
+
+
+def do_update():
+    """执行一次增量采集。采集到新数据时, 通过 SSE 推送给前端。"""
+    with _lock:
+        if _status["last_result"] == "running":
+            return "already_running"
+        _status["last_result"] = "running"
+
+    try:
+        rows, src = fetch_with_failover(INCREMENTAL_ORDER, verbose=False)
+        if not rows:
+            with _lock:
+                _status["last_result"] = "failed"
+                _status["last_update"] = datetime.now(CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            return "failed"
+
+        added = insert_rows(rows)
+        ok = verify()
+        n, mx_nbr, mx_date = db.get_db_rows()
+        with _lock:
+            _status["last_update"] = datetime.now(CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            _status["last_result"] = "ok" if ok else "verify_failed"
+            _status["last_count"] = added
+            _status["total_rows"] = n
+
+        # 采集到新数据, 立即推送给所有前端
+        if added > 0:
+            row = db.get_latest_draw()
+            if row:
+                latest = db.row_to_latest(row)
+                now_ts = time_sync.get_synced_ts()
+                period, remaining = time_sync.calc_countdown(now_ts)
+                sse.sse_broadcast("new_draw", {
+                    "latest": latest,
+                    "added": added,
+                    "current_period": period,
+                    "countdown": remaining,
+                    "server_time": now_ts,
+                })
+                print(f"[sse] 已推送 new_draw #{latest['draw_nbr']} 给 {sse.client_count()} 个客户端")
+        return "ok"
+    except Exception as e:
+        with _lock:
+            _status["last_result"] = f"error: {e}"
+            _status["last_update"] = datetime.now(CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        return f"error: {e}"
+
+
+def auto_update_loop(interval_min):
+    """后台线程: 与开奖周期同步采集。
+
+    在周期边界前 2 秒开始预热 (jndpc 可能提前发布),
+    归零后每 0.3 秒重试, 直到拿到新数据。
+    """
+    while True:
+        with _lock:
+            running = _status["auto_update"]
+        if running:
+            # 等到周期边界前 2 秒 (预热: jndpc 有时提前几秒发布新期)
+            ts = time_sync.get_synced_ts()
+            _, remaining = time_sync.calc_countdown(ts)
+            sleep_sec = max(0, remaining - 2)
+            if sleep_sec > 1:
+                print(f"[auto-update] 等待 {sleep_sec:.1f}s 后开始预热采集...")
+                time.sleep(sleep_sec)
+            # 采集: 每0.3秒重试, 直到拿到新数据 (最多 90 次 = 27 秒)
+            old_max = db.get_db_rows()[1] or 0
+            print(f"[auto-update] 开始采集, old_max={old_max}")
+            for attempt in range(90):
+                try:
+                    do_update()
+                    new_max = db.get_db_rows()[1] or 0
+                    if new_max > old_max:
+                        print(f"[auto-update] 成功: {old_max} -> {new_max} (第{attempt+1}次尝试)")
+                        break
+                    time.sleep(0.3)
+                except Exception as e:
+                    print(f"[auto-update] {e}")
+                    time.sleep(0.3)
+        else:
+            time.sleep(10)
+
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """多线程 HTTP 服务器, 避免单请求阻塞。"""
+    daemon_threads = True
+
+
+def main():
+    parser = argparse.ArgumentParser(description="28数据分析服务器 (采集入口)")
+    parser.add_argument("--port", type=int, default=8000, help="端口 (默认8000)")
+    parser.add_argument("--interval", type=float, default=3.5, help="自动采集间隔分钟 (默认3.5)")
+    args = parser.parse_args()
+
+    # 初始化状态
+    n, mx_nbr, mx_date = db.get_db_rows()
+    with _lock:
+        _status["total_rows"] = n
+        _status["interval_min"] = args.interval
+
+    # 空库或数据过少时, 先执行一次全量采集 (pc28.help 2000期, 覆盖更多历史)
+    if n < 500:
+        print(f"库内仅 {n} 期, 执行全量采集...")
+        try:
+            rows, src = fetch_with_failover(FULL_ORDER, verbose=True)
+            if rows:
+                added = insert_rows(rows)
+                verify()
+                n, mx_nbr, mx_date = db.get_db_rows()
+                with _lock:
+                    _status["total_rows"] = n
+                print(f"全量采集完成: 新增 {added} 期, 当前共 {n:,} 期")
+        except Exception as e:
+            print(f"全量采集失败: {e}, 将由增量线程继续尝试")
+
+    # 同步时钟 (与参考站对齐, 消除本地时钟偏差)
+    print("同步时钟...")
+    time_sync.sync_time_offset()
+    time_sync.start_sync_loop(300)
+
+    # 启动后台采集线程
+    t = threading.Thread(target=auto_update_loop, args=(args.interval,), daemon=True)
+    t.start()
+    print(f"自动采集线程已启动 (每{args.interval}分钟)")
+
+    # 注入采集回调, 生成统一 Handler
+    Handler = api_routes.make_handler(
+        status_provider=status_provider,
+        update_callback=do_update,
+        toggle_auto_callback=toggle_auto,
+    )
+
+    # 启动 HTTP 服务
+    server = ThreadedHTTPServer(("127.0.0.1", args.port), Handler)
+    print(f"服务器已启动: http://localhost:{args.port}/")
+    print(f"数据库: {n:,} 期, 最新期号 {mx_nbr} ({mx_date})")
+    print("按 Ctrl+C 停止")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n已停止")
+        server.shutdown()
+
+
+if __name__ == "__main__":
+    main()

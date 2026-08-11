@@ -81,7 +81,10 @@ function safeIdx(p) {
   }
   return -1;
 }
-const TT = { trigger:'axis', confine:true, backgroundColor:'#252836', borderColor:'#333', textStyle:{color:'#e0e0e0'} };
+const TT = { trigger:'axis', confine:true, backgroundColor:'#252836', borderColor:'#333',
+  textStyle:{color:'#e0e0e0', fontSize:12}, padding:[4,8],
+  extraCssText:'max-width:420px;white-space:nowrap;' };
+const sgn = v => v>=0 ? '+' : '';
 
 function dateRange(daysArr) {
   const from = $('from').value, to = $('to').value;
@@ -117,8 +120,8 @@ function drawAll(sel) {
       const i = safeIdx(p);
       if (i < 0 || i >= sel.length) return '';
       const d = sel[i];
-      let s = `${dates[i]}<br>累计盈亏: ${cum[i]>=0?'+':''}${FMT.format(cum[i])}<br>当日: ${d.p>=0?'+':''}${FMT.format(d.p)}`;
-      if (d.br > 0) s += `<br><b style="color:#ee6666">炸 ${d.br} 次</b>`;
+      let s = `${dates[i]} · 累计 ${sgn(cum[i])}${FMT.format(cum[i])} · 当日 ${sgn(d.p)}${FMT.format(d.p)}`;
+      if (d.br > 0) s += ` · <b style="color:#ee6666">炸${d.br}次</b>`;
       return s;
     } }),
     grid:{left:70,right:20,top:25,bottom:55},
@@ -126,15 +129,15 @@ function drawAll(sel) {
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
     dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#333',backgroundColor:'#1a1d29',dataBackground:{lineStyle:{color:'#444'},areaStyle:{color:'#2a2e3d'}},selectedDataBackground:{lineStyle:{color:'#5470c6'},areaStyle:{color:'#5470c6'}}}],
     series:[{type:'line',data:cum,smooth:true,symbol:'none',lineStyle:{color:'#91cc75',width:2},areaStyle:{color:'rgba(145,204,117,0.12)'},
-      markPoint:{symbol:'pin',symbolSize:36,data:burstIdx.map(b=>({coord:b.value,value:b.times,itemStyle:{color:'#ee6666'},
-        label:{show:true,formatter:'{c}',color:'#fff',fontSize:10,position:'inside'}}))}}]
+      markPoint:{symbol:'pin',symbolSize:22,data:burstIdx.map(b=>({coord:b.value,value:b.times,itemStyle:{color:'#ee6666'},
+        label:{show:true,formatter:'{c}',color:'#fff',fontSize:9,position:'inside'}}))}}]
   }, {notMerge:true});
 
   charts.daily.setOption({
     tooltip:Object.assign({}, TT, { formatter:p=>{
       const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
       const d=sel[i];
-      return `${dates[i]}<br>盈亏: ${d.p>=0?'+':''}${FMT.format(d.p)}<br>下注: ${d.b} 双中${d.w}/平局${d.f}/双错${d.l} 炸${d.br}`; }}),
+      return `${dates[i]} · ${sgn(d.p)}${FMT.format(d.p)} · 注${d.b} 中${d.w}/平${d.f}/错${d.l} 炸${d.br}`; }}),
     grid:{left:70,right:20,top:25,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
@@ -146,7 +149,7 @@ function drawAll(sel) {
   charts.drawdown.setOption({
     tooltip:Object.assign({}, TT, { formatter:p=>{
       const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
-      return `${dates[i]}<br>回撤: ${FMT.format(dd[i])}`; }}),
+      return `${dates[i]} · 回撤 ${FMT.format(dd[i])}`; }}),
     grid:{left:70,right:20,top:25,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
     yAxis:{type:'value',axisLabel:{color:'#888',fontSize:11,formatter:v=>FMT.format(v)},splitLine:{lineStyle:{color:'#222'}}},
@@ -154,7 +157,10 @@ function drawAll(sel) {
   }, {notMerge:true});
 
   charts.outcomes.setOption({
-    tooltip:Object.assign({}, TT),
+    tooltip:Object.assign({}, TT, { formatter:p=>{
+      const i=safeIdx(p); if (i<0 || i>=sel.length) return '';
+      const d=sel[i];
+      return `${dates[i]} · 双中${d.w} 平局${d.f} 双错${d.l}`; }}),
     legend:{textStyle:{color:'#aaa',fontSize:11},top:0},
     grid:{left:70,right:20,top:30,bottom:50},
     xAxis:{type:'category',data:dates,axisLabel:{color:'#888',fontSize:11},axisLine:{lineStyle:{color:'#333'}}},
@@ -183,7 +189,7 @@ function drawDrill(date) {
     tooltip:Object.assign({}, TT, { formatter:p=>{
       const i=safeIdx(p); if (i<0 || i>=pts.length) return '';
       const pt=pts[i];
-      return `${pt[0]}<br>累计: ${pt[1]>=0?'+':''}${FMT.format(pt[1])}<br>当日: ${pt[2]>=0?'+':''}${FMT.format(pt[2])}<br>档位: ${pt[3]>=0?'L'+pt[3]:'-'} ${RES[pt[4]]}`; }}),
+      return `${pt[0]} · 累计 ${sgn(pt[1])}${FMT.format(pt[1])} · ${RES[pt[4]]}${pt[3]>=0?' · L'+pt[3]:''}`; }}),
     legend:{textStyle:{color:'#aaa',fontSize:11},top:0},
     grid:{left:70,right:20,top:30,bottom:40},
     xAxis:{type:'category',data:pts.map(p=>p[0].slice(6)),axisLabel:{color:'#888',fontSize:10,interval:Math.max(0,Math.floor(pts.length/8)-1)},axisLine:{lineStyle:{color:'#333'}}},

@@ -33,10 +33,10 @@ PC28 E9 策略回测引擎 (完整版)
   - 维护时段: 夏令时 19:00-19:33 / 冬令时 20:00-20:33 不开奖
   - 18:00-18:50 双中 -> 暂停至 19:40
 
-五、关键回测结论 (29999期, 76天)
-  - 7级起20 + 止盈2500: 盈亏 +104,112, 回撤 11,144, 收益/回撤 9.34
-  - 双中率 25.3%, 平局率 50.0%, 双错率 24.7%
-  - 炸次 20 (6级原版 93次), 盈利天60 / 亏损天16
+五、关键回测结论 (31244期, 79天)
+  - 7级起20 + 止盈2500: 盈亏 +108,035, 回撤 11,144, 收益/回撤 9.69
+  - 双中率 25.4%, 平局率 49.7%, 双错率 24.9%
+  - 炸次 21 (6级原版 93次), 盈利天62 / 亏损天17
   - 最大单注 1,280, 资金需求约 2,560
 
 用法:
@@ -44,13 +44,13 @@ PC28 E9 策略回测引擎 (完整版)
   python backtest_e9.py --today      # 今日逐期明细HTML
   python backtest_e9.py --stops      # 止盈止损网格扫描
 """
-import sys, os, csv, json, argparse
+import sys, os, sqlite3, argparse
 from datetime import datetime
 
 # ============================================================
 # 配置区
 # ============================================================
-CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pc28_history_29999.csv")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pc28_history.db")
 
 # 梯度 (7级, 2x全额回收, 最大注1280, 资金需求~2560)
 LADDER = [20, 40, 80, 160, 320, 640, 1280]
@@ -66,7 +66,7 @@ COMMISSION_RATE = 0.98      # 抽水比例 (2%)
 HIGH_BET_THRESHOLD = 5000   # 单腿超过此值, 所有和值抽水
 HIGH_BET_RATE = 0.90        # 高注抽水比例 (10%)
 
-TODAY = "2026-08-08"  # --today 模式的日期
+TODAY = "2026-08-11"  # --today 模式的日期
 
 
 # ============================================================
@@ -112,16 +112,20 @@ def in_maintenance(dt):
 
 
 def load_draws(filter_date=None):
-    """加载CSV数据, 返回 [(期号, 日期, 时间, c1, c2, c3, 和值), ...] 旧->新。"""
-    rows = []
-    with open(CSV_PATH, encoding="utf-8-sig") as f:
-        for r in csv.DictReader(f):
-            if filter_date and r["draw_date"] != filter_date:
-                continue
-            parts = r["draw_number"].split("+")
-            c1, c2, c3 = int(parts[0]), int(parts[1]), int(parts[2])
-            rows.append((int(r["draw_nbr"]), r["draw_date"], r["draw_time"], c1, c2, c3, int(r["draw_num"])))
-    rows.reverse()
+    """从 SQLite 读取开奖数据, 返回 [(期号, 日期, 时间, c1, c2, c3, 和值), ...] 旧->新。"""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        if filter_date:
+            cur = conn.execute(
+                "SELECT draw_nbr, draw_date, draw_time, c1, c2, c3, draw_num "
+                "FROM draws WHERE draw_date = ? ORDER BY draw_nbr ASC", (filter_date,))
+        else:
+            cur = conn.execute(
+                "SELECT draw_nbr, draw_date, draw_time, c1, c2, c3, draw_num "
+                "FROM draws ORDER BY draw_nbr ASC")
+        rows = [tuple(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
     return rows
 
 
@@ -626,7 +630,7 @@ def run_stops_grid(draws):
 </head>
 <body>
 <h1>E9 7级起20 止盈止损网格</h1>
-<p class="sub">{len(all_r)}种组合 | 梯度{LADDER} | 29999期</p>
+<p class="sub">{len(all_r)}种组合 | 梯度{LADDER} | {len(draws)}期</p>
 <h2>按总盈亏 TOP 20</h2>
 <div class="table-wrap"><table>
 <thead><tr><th>#</th><th>止损</th><th>止盈</th><th>总盈亏</th><th>回撤</th><th>比值</th><th>炸</th><th>盈天</th><th>亏天</th></tr></thead>

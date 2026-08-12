@@ -12,6 +12,7 @@
   python server.py --interval 2 # 2分钟采集间隔
 """
 import argparse
+import socket
 import threading
 import time
 from datetime import datetime, timezone, timedelta
@@ -138,8 +139,20 @@ def auto_update_loop(interval_min):
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
-    """多线程 HTTP 服务器, 避免单请求阻塞。"""
+    """多线程 HTTP 服务器, 避免单请求阻塞。
+
+    使用 IPv6 dual-stack: 监听 '::' 同时接受 IPv4 与 IPv6 连接
+    (Windows 默认 V6ONLY=1, 需显式关闭以支持 IPv4 mapped 地址)。
+    """
     daemon_threads = True
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except (AttributeError, OSError):
+            pass
+        super().server_bind()
 
     def handle_error(self, request, client_address):
         """抑制客户端断连的日志噪音 (keep-alive 连接关闭时常见)。"""
@@ -194,9 +207,15 @@ def main():
         toggle_auto_callback=toggle_auto,
     )
 
-    # 启动 HTTP 服务 (绑定 0.0.0.0 支持外网/局域网访问)
-    server = ThreadedHTTPServer(("0.0.0.0", args.port), Handler)
-    print(f"服务器已启动: http://localhost:{args.port}/")
+    # 启动 HTTP 服务: 优先 IPv6 dual-stack (同时接受 IPv4/IPv6),
+    # 容器内不支持 IPv6 时自动回退到 IPv4 (Docker 端口映射仍支持双栈)
+    try:
+        server = ThreadedHTTPServer(("::", args.port), Handler)
+        print(f"服务器已启动: http://localhost:{args.port}/ (IPv4 + IPv6 dual-stack)")
+    except OSError:
+        ThreadedHTTPServer.address_family = socket.AF_INET
+        server = ThreadedHTTPServer(("0.0.0.0", args.port), Handler)
+        print(f"服务器已启动: http://localhost:{args.port}/ (IPv4, 容器模式)")
     print(f"数据库: {n:,} 期, 最新期号 {mx_nbr} ({mx_date})")
     print("按 Ctrl+C 停止")
     try:

@@ -50,7 +50,7 @@ from datetime import datetime
 # ============================================================
 # 配置区
 # ============================================================
-DB_PATH = os.path.join(os.environ.get("DB_DIR", os.path.dirname(os.path.abspath(__file__))), "pc28_history.db")
+DB_PATH = os.path.join(os.environ.get("DB_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "pc28_history.db")
 
 # 梯度 (7级, 2x全额回收, 最大注1280, 资金需求~2560)
 LADDER = [20, 40, 80, 160, 320, 640, 1280]
@@ -159,6 +159,12 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
     burst_chains = []   # [(start_event_idx, burst_event_idx), ...]
     chain_start_idx = None
     event_count = 0
+    # 逐期数据 (供 API 返回, 前端图表用)
+    ev_s = []   # 每期盈亏
+    ev_d = []   # 每期日盈亏
+    ev_l = []   # 每期下注 level (-1=未下注)
+    ev_r = []   # 每期结果 (0=双中 1=平 2=双错 3=炸 4=无)
+    burst_times = []  # [[date, time, daily_pnl], ...]
 
     for i in range(len(draws)):
         period, date, time_str, c1, c2, c3, total = draws[i]
@@ -205,6 +211,7 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
                     day["bursts"] += 1
                     s_result = "双错💥炸"
                     s_note = f"{amount}双错爆 -> 回{ladder[0]}"
+                    burst_times.append([date, time_str, daily_pnl])
                     if chain_start_idx is not None:
                         burst_chains.append((chain_start_idx, event_count))
                     chain_start_idx = None
@@ -295,6 +302,16 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
             })
             event_count += 1
 
+        # 逐期数据 (供 API 返回)
+        ev_s.append(s_pnl if isinstance(s_pnl, (int, float)) else 0)
+        ev_d.append(daily_pnl)
+        ev_l.append(b_level if isinstance(b_level, int) and b_level >= 0 else -1)
+        if s_result == '双中': ev_r.append(0)
+        elif s_result == '平局': ev_r.append(1)
+        elif '炸' in s_result: ev_r.append(3)
+        elif '双错' in s_result: ev_r.append(2)
+        else: ev_r.append(4)
+
     if daily_pnl > 0: profit_days += 1
     elif daily_pnl < 0: loss_days += 1
 
@@ -305,12 +322,25 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
                 if j < len(events):
                     events[j]["row_cls"] = "burst"
 
+    # 累计盈亏数组
+    cum_arr = []
+    _cum = 0
+    for _p in ev_s:
+        _cum += _p
+        cum_arr.append(_cum)
+
+    # 每期时间标签 "YYYY-MM-DD HH:MM"
+    times_arr = [f"{d[1]} {d[2][:5]}" for d in draws]
+
     return {
         "total_pnl": total_pnl, "max_drawdown": max_drawdown,
         "ratio": total_pnl / max_drawdown if max_drawdown > 0 else 0,
         "total_bets": total_bets, "profit_days": profit_days, "loss_days": loss_days,
         "bursts": bursts, "win": t_win, "flat": t_flat, "lose": t_lose,
         "daily": daily, "events": events, "final_level": level,
+        # API 扩展字段 (前端图表用)
+        "c": cum_arr, "d": ev_d, "l": ev_l, "r": ev_r,
+        "times": times_arr, "burst_times": burst_times,
     }
 
 

@@ -7,6 +7,7 @@
 
 两个入口 (server.py / api_server.py) 共用同一套路由, 避免分支逻辑漂移。
 """
+import gzip
 import json
 import os
 import queue
@@ -70,6 +71,8 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 self._json(200, json.dumps(db.get_sum_unopened_stats(), ensure_ascii=False))
             elif path == "/api/draws":
                 self._json(200, db.get_draws_json(), raw=True)
+            elif path == "/api/backtest":
+                self._handle_backtest(qs)
             elif path == "/api/status":
                 self._handle_status()
             elif path == "/api/update":
@@ -133,6 +136,61 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 time.sleep(2)
             # 超时, 返回当前状态
             self._handle_latest()
+
+        def _handle_backtest(self, qs):
+            """E9 策略回测 (后端 Python 计算, 比前端 JS 快 10 倍)。
+            参数: stop_profit (float|null), stop_loss (float|null), reverse (0|1)
+            """
+            try:
+                from backtest_e9 import run_backtest, load_draws, LADDER
+            except ImportError as e:
+                self._json(500, json.dumps({"error": f"backtest module import failed: {e}"}))
+                return
+
+            # 解析参数
+            sp_raw = qs.get("stop_profit", [""])[0]
+            sl_raw = qs.get("stop_loss", [""])[0]
+            rev = qs.get("reverse", ["0"])[0] == "1"
+            stop_profit = float(sp_raw) if sp_raw not in ("", "null", "0") else None
+            stop_loss = float(sl_raw) if sl_raw not in ("", "null", "0") else None
+            if stop_loss is not None:
+                stop_loss = -abs(stop_loss)
+
+            draws = load_draws()
+            r = run_backtest(draws, ladder=LADDER, stop_profit=stop_profit,
+                             stop_loss=stop_loss, detail=False, reverse=rev)
+
+            # 构建前端所需的 days 数组 (已排序, 含累计盈亏 c)
+            days = []
+            cum = 0
+            for d in sorted(r["daily"].keys()):
+                info = r["daily"][d]
+                cum += info["pnl"]
+                days.append({
+                    "d": d, "p": info["pnl"], "b": info["bets"],
+                    "w": info["win"], "f": info["flat"], "l": info["lose"],
+                    "br": info["bursts"], "ml": info.get("max_level", 0), "c": cum,
+                })
+
+            result = {
+                "meta": {
+                    "ladder": LADDER,
+                    "stop_profit": stop_profit,
+                    "stop_loss": stop_loss,
+                    "total_pnl": r["total_pnl"],
+                    "max_drawdown": r["max_drawdown"],
+                    "ratio": r["ratio"],
+                    "bursts": r["bursts"],
+                    "bets": r["total_bets"],
+                    "win": r["win"], "flat": r["flat"], "lose": r["lose"],
+                    "profit_days": r["profit_days"], "loss_days": r["loss_days"],
+                },
+                "days": days,
+                "c": r["c"], "d": r["d"], "l": r["l"], "r": r["r"],
+                "times": r["times"],
+                "burstTimes": r["burst_times"],
+            }
+            self._json(200, json.dumps(result, ensure_ascii=False))
 
         def _handle_status(self):
             n, mx_nbr, mx_date = db.get_db_rows()
@@ -297,9 +355,15 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
             payload = body.encode("utf-8") if isinstance(body, str) else body
             self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Cache-Control", "no-cache")
+            # 大响应 (>1KB) 启用 gzip 压缩, /api/draws 1.3MB → ~200KB
+            accept_enc = self.headers.get("Accept-Encoding", "")
+            if "gzip" in accept_enc and len(payload) > 1024:
+                payload = gzip.compress(payload, compresslevel=6)
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
 

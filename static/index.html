@@ -515,18 +515,54 @@ td .mini-ball {
 /* ========== Responsive ========== */
 @media (max-width: 768px) {
   .hero-grid { grid-template-columns: 1fr; }
-  .countdown-card { border-right: none; border-bottom: 1px solid var(--rule); }
+  .countdown-card { border-right: none; border-bottom: 1px solid var(--rule); padding: 18px 16px; }
   .countdown-display { font-size: 46px; }
+  .countdown-display span { width: 54px; height: 68px; font-size: 48px; border-radius: 8px; }
+  .countdown-display .sep { font-size: 38px; }
+  .countdown-card { padding: 18px 16px; }
+  .result-card { padding: 18px 16px; }
   .ball { width: 42px; height: 42px; font-size: 20px; }
-  .ball-sum { font-size: 28px; }
+  .ball-sum { font-size: 28px; width: 42px; height: 42px; }
+  .balls .ball-sum + .badge { margin-left: 20px; }
+  .badge { width: 36px; height: 36px; font-size: 16px; }
   .unopened-grid { grid-template-columns: repeat(2, 1fr); }
   .sum-unopened-grid { grid-template-columns: repeat(4, 1fr); }
   .unopened-strip { flex-wrap: wrap; }
-  .unopened-item { flex: 1 1 45%; border-bottom: 1px solid var(--rule); }
+  .unopened-item { flex: 1 1 45%; border-bottom: 1px solid var(--rule); padding: 8px 10px; }
+  .unopened-count { font-size: 16px; }
   .header-status { display: none; }
-  th, td { padding: 8px 10px; font-size: 12px; }
+  .header-nav { gap: 12px; font-size: 12px; }
+  .header-inner { padding: 12px 16px; }
+  .logo-text h1 { font-size: 18px; }
+  .logo-text p { font-size: 11px; }
+  th, td { padding: 8px 10px; font-size: 14px; }
   .container { padding: 0 16px; }
-  .tab-btn { padding: 8px 16px; font-size: 13px; }
+  .tab-btn { padding: 8px 14px; font-size: 13px; }
+  .tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 480px; }
+  .hero { padding: 16px 0 12px; }
+}
+@media (max-width: 480px) {
+  .countdown-display span { width: 44px; height: 56px; font-size: 38px; border-radius: 6px; }
+  .countdown-display .sep { font-size: 30px; }
+  .ball { width: 34px; height: 34px; font-size: 16px; border-radius: 6px; }
+  .ball-sum { width: 34px; height: 34px; font-size: 18px; border-radius: 6px; }
+  .ball-sep { font-size: 16px; }
+  .badge { width: 30px; height: 30px; font-size: 14px; }
+  .balls { gap: 6px; }
+  .balls .ball-sum + .badge { margin-left: 12px; }
+  .balls .badge + .badge { margin-left: 4px; }
+  .countdown-period, .result-period { font-size: 14px; }
+  .logo-text h1 { font-size: 16px; }
+  .logo-text p { display: none; }
+  .header-nav { display: none; }
+  .unopened-type { font-size: 11px; }
+  .unopened-count { font-size: 14px; }
+  .unopened-item { flex: 1 1 45%; padding: 6px 8px; }
+  th, td { padding: 6px 8px; font-size: 12px; }
+  .page-btn { padding: 4px 10px; font-size: 14px; }
+  .tab-btn { padding: 6px 10px; font-size: 12px; }
 }
 </style>
 </head>
@@ -1240,8 +1276,8 @@ async function init() {
   await loadUnopened();
 }
 
-// ========== Backtest Tab (E9 回测, 合并自 backtest_chart.html) ==========
-let BT_DATA = null, BT_DRAWS = null, BT_LADDER = null, BT_C = null, BT_TIMES = null;
+// ========== Backtest Tab (E9 回测, 后端 Python 计算) ==========
+let BT_TIMES = null;   // 每期时间标签 (来自后端)
 let btDateIdx = {};
 let btLastMaxNbr = null;
 let btDir = 'pos';
@@ -1249,6 +1285,7 @@ let btCurCfg = null;
 let btDays = [];
 let btCharts = {};
 let btInited = false;
+let btDebounceTimer = null;
 
 const BT_FMT = new Intl.NumberFormat('zh-CN');
 const btSgn = v => v >= 0 ? '+' : '';
@@ -1256,162 +1293,6 @@ const BT_RES = ['双中', '平局', '双错', '炸', '未下注'];
 const BT_TT = { trigger:'axis', confine:true, backgroundColor:'#ffffff', borderColor:'#e2e3e6',
   textStyle:{color:'#1d1d1f', fontSize:13}, padding:[4,8],
   extraCssText:'display:inline-block !important;width:fit-content !important;height:auto !important;max-width:none !important;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.08);' };
-
-function btPredictE9(c1, c2, c3) {
-  const s = c1 + c2 + c3;
-  const pdx = s <= 9 ? '大' : (s >= 18 ? '小' : (c1 <= 4 ? '大' : '小'));
-  const pds = c2 % 2 === 0 ? '双' : '单';
-  return [pdx, pds];
-}
-function btActualResult(c1, c2, c3) {
-  const s = c1 + c2 + c3;
-  return [s >= BT_C.BIG ? '大' : '小', s % 2 === 0 ? '双' : '单', BT_C.COMM_SUMS.includes(s)];
-}
-function btGetRate(amount, comm) {
-  if (amount > BT_C.HIGH_BET) return BT_C.HIGH_RATE;
-  return comm ? BT_C.COMM_RATE : 1.0;
-}
-function btInMaintenance(date, timeStr) {
-  const dt = new Date(date + 'T' + timeStr);
-  const year = dt.getFullYear();
-  const mar1 = new Date(year, 2, 1);
-  const mar1Wd = (mar1.getDay() + 6) % 7;
-  const dstStartDay = 1 + (6 - mar1Wd) % 7 + 7;
-  const dstStart = new Date(year, 2, dstStartDay);
-  const nov1 = new Date(year, 10, 1);
-  const nov1Wd = (nov1.getDay() + 6) % 7;
-  const dstEndDay = 1 + (6 - nov1Wd) % 7;
-  const dstEnd = new Date(year, 10, dstEndDay);
-  const isSummer = dstStart <= dt && dt < dstEnd;
-  const sh = isSummer ? 19 : 20, sm = 0, eh = isSummer ? 19 : 20, em = 33;
-  const cur = dt.getHours() * 60 + dt.getMinutes();
-  return sh * 60 + sm <= cur && cur < eh * 60 + em;
-}
-
-function runBacktest(stopProfit, stopLoss, reverse) {
-  let level = 0, dailyPnl = 0, curDate = null, pauseUntilMs = 0;
-  let pending = null, totalPnl = 0, totalBets = 0;
-  let profitDays = 0, lossDays = 0, bursts = 0;
-  let tWin = 0, tFlat = 0, tLose = 0;
-  const daily = {};
-  const evS = [], evD = [], evL = [], evR = [];
-  const burstTimes = [];
-
-  for (let i = 0; i < BT_DRAWS.length; i++) {
-    const [period, date, timeStr, c1, c2, c3] = BT_DRAWS[i];
-    const [adx, ads, comm] = btActualResult(c1, c2, c3);
-
-    if (date !== curDate) {
-      curDate = date;
-      if (dailyPnl > 0) profitDays++;
-      else if (dailyPnl < 0) lossDays++;
-      dailyPnl = 0;
-      level = 0;
-      pauseUntilMs = 0;
-      if (!daily[date]) daily[date] = {pnl:0, bets:0, win:0, flat:0, lose:0, max_level:0, bursts:0};
-    }
-    const day = daily[date];
-
-    let sResult = '', sPnl = 0;
-    if (pending) {
-      const [pDx, pDs, amount, pLevel] = pending;
-      const rate = btGetRate(amount, comm);
-      const dxOk = pDx === adx, dsOk = pDs === ads;
-      const win = amount * rate;
-      if (dxOk && dsOk) {
-        sPnl = Math.round(win * 2);
-        level = 0;
-        sResult = '双中';
-        tWin++; day.win++;
-      } else if (!dxOk && !dsOk) {
-        sPnl = -amount * 2;
-        tLose++; day.lose++;
-        if (pLevel >= BT_LADDER.length - 1) {
-          level = 0; bursts++; day.bursts++; sResult = '炸';
-          burstTimes.push([date, timeStr, dailyPnl]);
-        } else {
-          level = pLevel + 1; sResult = '双错';
-        }
-      } else {
-        sPnl = Math.round((dxOk ? win : -amount) + (dsOk ? win : -amount));
-        sResult = '平局';
-        tFlat++; day.flat++;
-      }
-      dailyPnl += sPnl;
-      totalPnl += sPnl;
-      day.pnl += sPnl;
-      if (dxOk && dsOk) {
-        const [hh, mm] = timeStr.split(':').map(Number);
-        const cm = hh * 60 + mm;
-        if (18*60 <= cm && cm <= 18*60+50) {
-          pauseUntilMs = new Date(date + 'T19:40:00').getTime();
-        }
-      }
-      pending = null;
-    }
-
-    const dtMs = new Date(date + 'T' + timeStr).getTime();
-    let bLevel = -1;
-    if (btInMaintenance(date, timeStr)) {
-      // 维护时段
-    } else if (pauseUntilMs && dtMs < pauseUntilMs) {
-      // 双中暂停
-    } else if (stopLoss !== null && dailyPnl <= stopLoss) {
-      // 止损
-    } else if (stopProfit !== null && dailyPnl >= stopProfit) {
-      // 止盈
-    } else {
-      const amount = BT_LADDER[level];
-      let [pdx, pds] = btPredictE9(c1, c2, c3);
-      if (reverse) {
-        pdx = pdx === '大' ? '小' : '大';
-        pds = pds === '双' ? '单' : '双';
-      }
-      pending = [pdx, pds, amount, level];
-      totalBets++;
-      day.bets++;
-      day.max_level = Math.max(day.max_level, level);
-      bLevel = level;
-    }
-
-    evS.push(sPnl);
-    evD.push(dailyPnl);
-    evL.push(bLevel);
-    let res = 4;
-    if (sResult === '炸') res = 3;
-    else if (sResult === '双中') res = 0;
-    else if (sResult === '平局') res = 1;
-    else if (sResult === '双错') res = 2;
-    evR.push(res);
-  }
-  if (dailyPnl > 0) profitDays++;
-  else if (dailyPnl < 0) lossDays++;
-
-  const cumArr = [];
-  let total = 0;
-  for (const p of evS) { total += p; cumArr.push(total); }
-
-  const days = [];
-  let cum = 0, dayPeak = -Infinity, dayMaxDd = 0;
-  for (const d of Object.keys(daily).sort()) {
-    const info = daily[d];
-    cum += info.pnl;
-    dayPeak = Math.max(dayPeak, cum);
-    dayMaxDd = Math.max(dayMaxDd, dayPeak - cum);
-    days.push({d, p:info.pnl, b:info.bets, w:info.win, f:info.flat, l:info.lose, br:info.bursts, ml:info.max_level, c:cum});
-  }
-
-  return {
-    days, c:cumArr, d:evD, l:evL, r:evR, burstTimes,
-    meta: {
-      ladder:BT_LADDER, stop_profit:stopProfit, stop_loss:stopLoss,
-      total_pnl:totalPnl, max_drawdown:dayMaxDd,
-      ratio: dayMaxDd > 0 ? totalPnl/dayMaxDd : 0,
-      bursts, bets:totalBets, win:tWin, flat:tFlat, lose:tLose,
-      profit_days:profitDays, loss_days:lossDays
-    }
-  };
-}
 
 function btSafeIdx(p) {
   for (const q of p) {
@@ -1613,23 +1494,48 @@ function btApplyRange() {
 }
 
 function btRebuild() {
-  const sp = parseFloat(document.getElementById('btSpInput').value);
-  const sl = parseFloat(document.getElementById('btSlInput').value);
-  const stopProfit = (isNaN(sp) || sp === 0) ? null : sp;
-  const stopLoss = (isNaN(sl) || sl === 0) ? null : -Math.abs(sl);
-  const reverse = btDir === 'rev';
-  btCurCfg = runBacktest(stopProfit, stopLoss, reverse);
-  btDays = btCurCfg.days;
-  const m = btCurCfg.meta;
-  const all = btCurCfg.days;
-  let label = reverse ? '反投' : '正投';
-  label += ' · 止盈' + (stopProfit !== null ? '+' + stopProfit : '无');
-  label += ' · 止损' + (stopLoss !== null ? stopLoss : '无');
-  document.getElementById('btSubtitle').textContent = label + ' | 数据 ' + all[0].d + ' ~ ' + all[all.length-1].d + ' | ' +
-    '全期总盈亏 ' + btSgn(m.total_pnl) + BT_FMT.format(m.total_pnl) + ' · 炸 ' + m.bursts + ' 次 · 最大回撤 ' + BT_FMT.format(m.max_drawdown) + ' | ' +
-    '梯度[' + m.ladder.join(',') + ']';
-  btApplyRange();
-  btFillDaySel();
+  // debounce: 避免输入框快速输入时频繁请求后端
+  if (btDebounceTimer) clearTimeout(btDebounceTimer);
+  btDebounceTimer = setTimeout(async () => {
+    const sp = parseFloat(document.getElementById('btSpInput').value);
+    const sl = parseFloat(document.getElementById('btSlInput').value);
+    const stopProfit = (isNaN(sp) || sp === 0) ? null : sp;
+    const stopLoss = (isNaN(sl) || sl === 0) ? null : -Math.abs(sl);
+    const reverse = btDir === 'rev';
+    const sub = document.getElementById('btSubtitle');
+    sub.textContent = '正在计算回测 (后端 Python)...';
+    try {
+      const params = new URLSearchParams();
+      if (stopProfit !== null) params.set('stop_profit', stopProfit);
+      if (stopLoss !== null) params.set('stop_loss', Math.abs(stopLoss));
+      if (reverse) params.set('reverse', '1');
+      const res = await fetch('/api/backtest?' + params.toString(), {cache:'no-store'});
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      btCurCfg = data;
+      btDays = data.days;
+      BT_TIMES = data.times;
+      // 重建 btDateIdx (日期 -> [start, end) 索引)
+      btDateIdx = {};
+      BT_TIMES.forEach((t, i) => {
+        const k = t.slice(0, 10);
+        if (!btDateIdx[k]) btDateIdx[k] = [i, i + 1];
+        else btDateIdx[k][1] = i + 1;
+      });
+      const m = data.meta;
+      const all = data.days;
+      let label = reverse ? '反投' : '正投';
+      label += ' · 止盈' + (stopProfit !== null ? '+' + stopProfit : '无');
+      label += ' · 止损' + (stopLoss !== null ? stopLoss : '无');
+      sub.textContent = label + ' | 数据 ' + all[0].d + ' ~ ' + all[all.length-1].d + ' | ' +
+        '全期总盈亏 ' + btSgn(m.total_pnl) + BT_FMT.format(m.total_pnl) + ' · 炸 ' + m.bursts + ' 次 · 最大回撤 ' + BT_FMT.format(m.max_drawdown) + ' | ' +
+        '梯度[' + m.ladder.join(',') + ']';
+      btApplyRange();
+      btFillDaySel();
+    } catch(e) {
+      sub.textContent = '回测计算失败: ' + e.message;
+    }
+  }, 400);
 }
 
 function btInitCharts() {
@@ -1671,45 +1577,26 @@ function btBindEvents() {
   document.getElementById('btApply').onclick = btApplyRange;
 }
 
-async function btLoadData() {
-  const res = await fetch('/api/draws', {cache:'no-store'});
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  BT_DATA = await res.json();
-  BT_DRAWS = BT_DATA.draws;
-  BT_LADDER = BT_DATA.ladder;
-  BT_C = BT_DATA.C;
-  BT_TIMES = BT_DRAWS.map(d => d[1] + ' ' + d[2].slice(0,5));
-  btDateIdx = {};
-  BT_TIMES.forEach((t, i) => {
-    const k = t.slice(0, 10);
-    if (!btDateIdx[k]) btDateIdx[k] = [i, i + 1];
-    else btDateIdx[k][1] = i + 1;
-  });
-}
-
 async function btReloadData() {
-  try {
-    await btLoadData();
-    btLastMaxNbr = BT_DRAWS.length ? BT_DRAWS[BT_DRAWS.length-1][0] : null;
-    btRebuild();
-    btApplyRange();
-  } catch(e) { console.error('bt reload', e); }
+  await btRebuild();
 }
 
 let btAutoTimer = null;
 async function btInit() {
-  btInitCharts();
+  const sub = document.getElementById('btSubtitle');
+  sub.textContent = '正在加载回测数据 (后端 Python 计算)...';
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
   btBindEvents();
   try {
-    await btLoadData();
-    btLastMaxNbr = BT_DRAWS.length ? BT_DRAWS[BT_DRAWS.length-1][0] : null;
-    btRebuild();
+    btInitCharts();
+    await btRebuild();
     document.getElementById('btFrom').value = btDays[0].d;
     document.getElementById('btTo').value = btDays[btDays.length-1].d;
     document.querySelector('.bt-preset[data-bt-days="all"]').classList.add('active');
     btApplyRange();
   } catch(e) {
-    document.getElementById('btSubtitle').textContent = '数据加载失败: ' + e.message + ' (请确认服务器已启动)';
+    sub.textContent = '数据加载失败: ' + e.message + ' (请确认服务器已启动)';
   }
   // 每 30 秒检查是否有新数据, 有则自动重载图表
   btAutoTimer = setInterval(async () => {

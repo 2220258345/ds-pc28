@@ -319,9 +319,11 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
 .tab-nav {
   display: flex; gap: 0; margin-bottom: var(--space-6);
   border-bottom: 2px solid var(--rule);
+  justify-content: center;
 }
 .tab-btn {
-  padding: var(--space-3) var(--space-6); border: none;
+  flex: 1; max-width: 200px;
+  padding: var(--space-3) var(--space-4); border: none;
   background: transparent; color: var(--ink-3);
   font-family: "DM Sans", sans-serif;
   font-size: var(--text-base); font-weight: 500; cursor: pointer;
@@ -329,6 +331,7 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
   border-bottom: 3px solid transparent;
   margin-bottom: -2px;
   letter-spacing: 0.01em;
+  text-align: center;
 }
 .tab-btn:hover { color: var(--ink); }
 .tab-btn.active {
@@ -616,8 +619,8 @@ td .mini-ball {
   .logo-text p { font-size: var(--text-xs); }
   th, td { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
   .container { padding: 0 var(--space-4); }
-  .tab-btn { padding: var(--space-2) var(--space-4); font-size: var(--text-sm); }
-  .tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn { padding: var(--space-2) var(--space-4); font-size: var(--text-sm); flex: 0 1 auto; max-width: none; }
+  .tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; justify-content: flex-start; }
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { min-width: 480px; }
   .hero { padding: var(--space-4) 0 var(--space-3); }

@@ -299,60 +299,96 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 <style>
   :root {{
-    --paper:#f4f5f7; --panel:#ffffff; --panel-2:#eef0f2;
-    --ink:#1d1d1f; --ink-2:#5c5c62; --ink-3:#8b8b91;
-    --rule:#e2e3e6; --rule-2:#ecedef;
-    --accent:#2c5282; --red:#c4444a; --green:#2f855a; --amber:#b7791f;
-    --radius:4px;
+    --paper:#f6f7fb; --panel:#ffffff; --panel-2:#f0f2f7;
+    --ink:#1a1c2e; --ink-2:#545870; --ink-3:#8b8fa3;
+    --rule:#e4e7ed; --rule-2:#eef0f5;
+    --accent:#4361ee; --accent-2:#5874f5;
+    --red:#e5484d; --green:#30a46c; --amber:#e8a317;
+    --radius:6px; --radius-lg:12px;
+    --shadow-sm:0 1px 3px rgba(20,30,60,0.06),0 1px 2px rgba(20,30,60,0.04);
+    --shadow-md:0 4px 12px -2px rgba(20,30,60,0.07),0 2px 6px -2px rgba(20,30,60,0.04);
+    --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
+    --space-5:20px; --space-6:24px; --space-8:32px;
   }}
   body {{
     font-family:"DM Sans",-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--paper); color:var(--ink);
-    line-height:1.6; margin:0; padding:24px 20px 60px;
+    background:var(--paper);
+    background-image:linear-gradient(180deg,var(--panel-2) 0%,var(--paper) 280px);
+    background-attachment:fixed;
+    color:var(--ink); line-height:1.7;
+    margin:0; padding:var(--space-8) var(--space-5) 60px;
     -webkit-font-smoothing:antialiased;
   }}
   .container {{ max-width:900px; margin:0 auto; }}
-  h1, h2, h3 {{ color:var(--ink); margin-top:32px; letter-spacing:-0.01em; }}
-  h1 {{ font-size:26px; font-weight:700; border-bottom:1px solid var(--rule); padding-bottom:10px; }}
-  h2 {{ font-size:20px; font-weight:600; border-bottom:1px solid var(--rule-2); padding-bottom:6px; }}
-  h3 {{ font-size:16px; font-weight:600; color:var(--accent); }}
+  h1, h2, h3 {{ color:var(--ink); letter-spacing:-0.02em; }}
+  h1 {{
+    font-size:28px; font-weight:700;
+    border-bottom:2px solid var(--rule); padding-bottom:var(--space-3);
+    margin-top:var(--space-6);
+  }}
+  h2 {{
+    font-size:22px; font-weight:600;
+    border-bottom:1px solid var(--rule-2); padding-bottom:var(--space-2);
+    margin-top:var(--space-8);
+  }}
+  h3 {{ font-size:17px; font-weight:600; color:var(--accent); margin-top:var(--space-6); }}
   p, li {{ font-size:15px; color:var(--ink-2); }}
-  a {{ color:var(--accent); }}
+  p {{ margin:var(--space-2) 0; }}
+  a {{ color:var(--accent); transition:color 0.15s ease; }}
   code {{
     background:var(--panel-2); color:var(--accent);
-    padding:2px 6px; border-radius:var(--radius); border:1px solid var(--rule);
-    font-family:"JetBrains Mono",monospace; font-size:14px;
+    padding:2px var(--space-2); border-radius:var(--radius); border:1px solid var(--rule);
+    font-family:"JetBrains Mono",monospace; font-size:13px;
   }}
   pre {{
     background:var(--panel); border:1px solid var(--rule);
-    border-radius:var(--radius); padding:16px 20px; overflow-x:auto;
+    border-radius:var(--radius-lg); padding:var(--space-4) var(--space-5);
+    overflow-x:auto; box-shadow:var(--shadow-sm);
+    margin:var(--space-4) 0;
   }}
   pre code {{
     background:transparent; border:none; color:var(--ink);
     padding:0; font-size:14px;
   }}
   table {{
-    border-collapse:collapse; width:100%; margin:12px 0;
-    font-size:14px;
+    border-collapse:collapse; width:100%; margin:var(--space-4) 0;
+    font-size:14px; border-radius:var(--radius-lg); overflow:hidden;
+    box-shadow:var(--shadow-sm);
   }}
   th, td {{
-    border:1px solid var(--rule); padding:8px 12px; text-align:left;
+    border:1px solid var(--rule); padding:var(--space-2) var(--space-4);
+    text-align:left;
   }}
-  th {{ background:var(--panel-2); color:var(--ink); font-weight:600; }}
+  th {{
+    background:var(--panel-2); color:var(--ink); font-weight:600;
+    letter-spacing:0.02em;
+  }}
   td {{ color:var(--ink-2); }}
   tr:nth-child(even) td {{ background:var(--paper); }}
   blockquote {{
-    border-left:3px solid var(--accent);
-    margin:12px 0; padding:8px 16px;
-    background:var(--panel); border-radius:0 var(--radius) var(--radius) 0;
-    color:var(--ink-3);
+    border-left:4px solid var(--accent);
+    margin:var(--space-4) 0; padding:var(--space-4) var(--space-5);
+    background:var(--panel); border-radius:0 var(--radius-lg) var(--radius-lg) 0;
+    box-shadow:var(--shadow-sm);
   }}
-  hr {{ border:none; border-top:1px solid var(--rule); margin:24px 0; }}
+  blockquote p {{
+    margin:var(--space-1) 0; color:var(--ink-2); font-size:14px;
+    line-height:1.8;
+  }}
+  blockquote p:first-child {{ margin-top:0; }}
+  blockquote p:last-child {{ margin-bottom:0; }}
+  hr {{ border:none; border-top:1px solid var(--rule); margin:var(--space-8) 0; }}
+  /* 顶部第一个 blockquote 特殊处理: 基础信息卡片 */
+  blockquote:first-of-type {{
+    background:linear-gradient(135deg,var(--panel) 0%,var(--panel-2) 100%);
+    border-left-width:4px;
+  }}
 </style>
 </head>
 <body>
 <div class="container" id="content"></div>
 <script>
+  marked.setOptions({{ breaks: true }});
   const md = `{md_escaped}`;
   document.getElementById('content').innerHTML = marked.parse(md);
 </script>

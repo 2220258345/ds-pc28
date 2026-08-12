@@ -78,11 +78,9 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
             elif path == "/api/update":
                 self._handle_update()
             elif path == "/" or path == "/index.html":
-                self.path = "/index.html"
-                super().do_GET()
+                self._serve_html("index.html")
             elif path == "/backtest":
-                self.path = "/backtest_chart.html"
-                super().do_GET()
+                self._serve_html("backtest_chart.html")
             elif path == "/api-doc":
                 self._render_markdown()
             else:
@@ -100,6 +98,22 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 self._json(404, '{"error":"not found"}')
 
         # ============ API 处理函数 ============
+        def _serve_html(self, filename):
+            """返回 HTML 文件, 禁用缓存确保浏览器始终获取最新版本。"""
+            filepath = os.path.join(STATIC_DIR, filename)
+            try:
+                with open(filepath, "rb") as f:
+                    content = f.read()
+            except FileNotFoundError:
+                self.send_error(404, "Not Found")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(content)
+
         def _handle_time(self):
             now_ts = time_sync.get_synced_ts()
             period, remaining = time_sync.calc_countdown(now_ts)

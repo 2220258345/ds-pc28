@@ -55,12 +55,16 @@ def do_update():
             return "already_running"
         _status["last_result"] = "running"
 
+    # 记录采集前的最新期号, 用于检测是否有新数据
+    pre_max = db.get_db_rows()[1] or 0
+
     try:
         rows, src = fetch_with_failover(INCREMENTAL_ORDER, verbose=False)
         if not rows:
             with _lock:
                 _status["last_result"] = "failed"
                 _status["last_update"] = datetime.now(CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[do_update] 采集失败 pre_max={pre_max}")
             return "failed"
 
         added = insert_rows(rows)
@@ -86,12 +90,15 @@ def do_update():
                     "countdown": remaining,
                     "server_time": now_ts,
                 })
-                print(f"[sse] 已推送 new_draw #{latest['draw_nbr']} 给 {sse.client_count()} 个客户端")
+                print(f"[sse] 已推送 new_draw #{latest['draw_nbr']} 给 {sse.client_count()} 个客户端 (added={added}, pre_max={pre_max}, new_max={mx_nbr})")
+        else:
+            print(f"[do_update] added=0 不推送 pre_max={pre_max} new_max={mx_nbr} src={src}")
         return "ok"
     except Exception as e:
         with _lock:
             _status["last_result"] = f"error: {e}"
             _status["last_update"] = datetime.now(CN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[do_update] 异常: {e}")
         return f"error: {e}"
 
 
@@ -133,6 +140,14 @@ def auto_update_loop(interval_min):
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """多线程 HTTP 服务器, 避免单请求阻塞。"""
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        """抑制客户端断连的日志噪音 (keep-alive 连接关闭时常见)。"""
+        import sys
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def main():
@@ -179,8 +194,8 @@ def main():
         toggle_auto_callback=toggle_auto,
     )
 
-    # 启动 HTTP 服务
-    server = ThreadedHTTPServer(("127.0.0.1", args.port), Handler)
+    # 启动 HTTP 服务 (绑定 0.0.0.0 支持外网/局域网访问)
+    server = ThreadedHTTPServer(("0.0.0.0", args.port), Handler)
     print(f"服务器已启动: http://localhost:{args.port}/")
     print(f"数据库: {n:,} 期, 最新期号 {mx_nbr} ({mx_date})")
     print("按 Ctrl+C 停止")

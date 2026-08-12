@@ -31,7 +31,8 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timedelta, timezone
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+# 项目根目录 (app/collector.py → app/ → 项目根), 与 core/db.py 保持一致
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(os.environ.get("DB_DIR", BASE), "pc28_history.db")
 CN_TZ = timezone(timedelta(hours=8))
 

@@ -37,6 +37,9 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
     """
 
     class Handler(SimpleHTTPRequestHandler):
+        # HTTP/1.1 必需: 支持 keep-alive 长连接, SSE 才能保持不断开
+        protocol_version = "HTTP/1.1"
+
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=STATIC_DIR, **kwargs)
 
@@ -281,20 +284,24 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
 </script>
 </body>
 </html>"""
+            payload = html_page.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            self.wfile.write(html_page.encode("utf-8"))
+            self.wfile.write(payload)
 
         # ============ 工具方法 ============
         def _json(self, code, body, raw=False):
+            payload = body.encode("utf-8") if isinstance(body, str) else body
             self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            self.wfile.write(body.encode("utf-8"))
+            self.wfile.write(payload)
 
         def log_message(self, fmt, *args):
             pass  # 静默日志

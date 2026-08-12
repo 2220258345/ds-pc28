@@ -610,6 +610,7 @@ const pageSize = 30;
 let lastDrawNbr = 0;         // 最新已显示的期号
 let countdownInterval = null;
 let syncInterval = null;
+let refreshInterval = null;   // 定时刷新兜底 (SSE 失败时使用)
 let waitingForResult = false; // 是否在等待新结果
 let waitingPeriod = 0;        // 等待的期号
 
@@ -778,6 +779,7 @@ async function pollForNewDraw(afterNbr) {
         lastDrawNbr = data.latest.draw_nbr;
         loadHistory(currentPage);
         loadUnopened();
+        loadSumUnopened();
         // 数据显示完毕, 才恢复倒计时
         exitWaitingState();
         return;
@@ -792,7 +794,9 @@ async function pollForNewDraw(afterNbr) {
       return;
     }
   }
-  console.warn('等待开奖超时');
+  console.warn('等待开奖超时, 兜底刷新最新数据');
+  // 超时兜底: 主动刷新一次最新数据 (防止漏掉更新)
+  await loadLatest(true);
   exitWaitingState();
 }
 
@@ -841,11 +845,18 @@ async function loadLatest(animate) {
     const data = await resp.json();
     if (!data.latest) return;
 
+    // 期号变化时, 刷新所有相关数据 (SSE 兜底机制)
+    const isNew = lastDrawNbr > 0 && data.latest.draw_nbr > lastDrawNbr;
     showLatestResult(data.latest, animate);
-
-    if (lastDrawNbr > 0 && data.latest.draw_nbr > lastDrawNbr && animate) {
+    if (isNew) {
+      console.log('[loadLatest] 检测到期号变化 #' + lastDrawNbr + ' -> #' + data.latest.draw_nbr);
       loadHistory(currentPage);
       loadUnopened();
+      loadSumUnopened();
+      // 如果在等待状态, 退出
+      if (waitingForResult) {
+        exitWaitingState();
+      }
     }
     lastDrawNbr = data.latest.draw_nbr;
   } catch (e) {

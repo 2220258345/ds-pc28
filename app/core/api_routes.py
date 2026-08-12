@@ -79,8 +79,6 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 self._handle_update()
             elif path == "/" or path == "/index.html":
                 self._serve_html("index.html")
-            elif path == "/backtest":
-                self._serve_html("backtest_chart.html")
             elif path == "/api-doc":
                 self._render_markdown()
             else:
@@ -155,9 +153,13 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
             """E9 策略回测 (后端 Python 计算, 比前端 JS 快 10 倍)。
             参数: stop_profit (float|null), stop_loss (float|null), reverse (0|1)
             """
+            import importlib.util
+            bt_path = os.path.join(BASE, "app", "backtest_e9.py")
             try:
-                from backtest_e9 import run_backtest, load_draws, LADDER
-            except ImportError as e:
+                spec = importlib.util.spec_from_file_location("backtest_e9", bt_path)
+                bt = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(bt)
+            except Exception as e:
                 self._json(500, json.dumps({"error": f"backtest module import failed: {e}"}))
                 return
 
@@ -170,9 +172,9 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
             if stop_loss is not None:
                 stop_loss = -abs(stop_loss)
 
-            draws = load_draws()
-            r = run_backtest(draws, ladder=LADDER, stop_profit=stop_profit,
-                             stop_loss=stop_loss, detail=False, reverse=rev)
+            draws = bt.load_draws()
+            r = bt.run_backtest(draws, ladder=bt.LADDER, stop_profit=stop_profit,
+                                stop_loss=stop_loss, detail=False, reverse=rev)
 
             # 构建前端所需的 days 数组 (已排序, 含累计盈亏 c)
             days = []
@@ -188,7 +190,7 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
 
             result = {
                 "meta": {
-                    "ladder": LADDER,
+                    "ladder": bt.LADDER,
                     "stop_profit": stop_profit,
                     "stop_loss": stop_loss,
                     "total_pnl": r["total_pnl"],

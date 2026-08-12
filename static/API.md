@@ -1,6 +1,6 @@
 # 28数据分析 · API 对接文档
 
-> 基础地址：`http://localhost:8080`
+> 基础地址：`http://localhost:8000`
 > 所有接口均为 `GET` 请求，返回 `application/json; charset=utf-8`
 > SSE 端点返回 `text/event-stream; charset=utf-8`
 > 所有接口支持跨域（`Access-Control-Allow-Origin: *`）

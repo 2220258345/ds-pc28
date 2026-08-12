@@ -52,9 +52,9 @@ def sync_time_offset():
             ref_ts = data.get("server_time") or data.get("timestamp") or 0
             if ref_ts:
                 # 用 mid=(t1+t2)/2 估算服务器生成响应的时刻 (假设网络上下行对称)
-                # 减 2.0s 抵消 server_time 生成到响应发出的延迟 (实测让倒计时与参考站对齐)
+                # 实测 8 次采样: 补偿 0 时与参考站误差 < 0.1s (原 -2.0 导致慢约 2s)
                 mid = (t1 + t2) / 2
-                est_offset = ref_ts - mid - 2.0
+                est_offset = ref_ts - mid
                 samples.append(est_offset)
         except Exception as e:
             print(f"[time-sync] 第{i+1}次失败: {e}")

@@ -63,7 +63,10 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
 }
 .header-inner {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 0;
+  padding: 16px 24px;
+}
+.header-right {
+  display: flex; align-items: center; gap: 24px;
 }
 .logo { display: flex; align-items: center; gap: 14px; }
 .logo-icon {
@@ -203,7 +206,7 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
   font-family: "JetBrains Mono", monospace;
   font-size: 26px; font-weight: 700;
   color: #ffffff;
-  background: #0000ff;
+  background: #008000;
   border-radius: 10px;
   width: 52px; height: 52px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -478,19 +481,20 @@ td .mini-ball {
 <header class="header">
   <div class="container header-inner">
     <div class="logo">
-      <div class="logo-icon">28</div>
       <div class="logo-text">
         <h1>28数据分析</h1>
         <p>更新快 · 数据全 · 倒计时精准</p>
       </div>
     </div>
-    <nav class="header-nav">
-      <a href="http://localhost:8080/api-doc" target="_blank"><span class="nav-dot"></span>API 文档</a>
-      <a href="http://localhost:8080/backtest" target="_blank"><span class="nav-dot"></span>回测仪表盘</a>
-    </nav>
-    <div class="header-status">
-      <span><span class="status-dot"></span>自动采集中</span>
-      <span id="dbInfo">加载中...</span>
+    <div class="header-right">
+      <nav class="header-nav">
+        <a href="http://localhost:8080/api-doc" target="_blank"><span class="nav-dot"></span>API 文档</a>
+        <a href="http://localhost:8080/backtest" target="_blank"><span class="nav-dot"></span>回测仪表盘</a>
+      </nav>
+      <div class="header-status">
+        <span><span class="status-dot"></span>自动采集中</span>
+        <span id="dbInfo">加载中...</span>
+      </div>
     </div>
   </div>
 </header>
@@ -822,6 +826,15 @@ function exitWaitingState() {
 }
 
 // ========== 最新数据 ==========
+// 和值波色规则 (0-27): 红波/蓝波/绿波 — 1:1 复刻 pc89.net
+const RED_NUMS  = new Set([1,2,7,8,12,13,18,19,23,24]);
+const BLUE_NUMS = new Set([3,4,9,10,14,15,20,25,26]);
+function sumBg(n) {
+  if (RED_NUMS.has(n))  return '#ff0000';
+  if (BLUE_NUMS.has(n)) return '#0000ff';
+  return '#008000'; /* 绿波 */
+}
+
 function showLatestResult(d, animate) {
   document.getElementById('latestPeriod').textContent = `第 ${d.draw_nbr} 期`;
 
@@ -834,7 +847,7 @@ function showLatestResult(d, animate) {
     <span class="ball-sep">+</span>
     <div class="ball c${d.c3}">${d.c3}</div>
     <span class="ball-sep">=</span>
-    <span class="ball-sum">${d.draw_num}</span>
+    <span class="ball-sum" style="background:${sumBg(d.draw_num)}">${d.draw_num}</span>
     <span class="badge ${sizeClass}">${d.size_type}</span>
     <span class="badge ${parityClass}">${d.parity_type}</span>
   `;
@@ -894,10 +907,10 @@ async function loadHistory(page) {
             <span class="mini-ball c${d.c1}">${d.c1}</span>
             <span class="mini-ball c${d.c2}">${d.c2}</span>
             <span class="mini-ball c${d.c3}">${d.c3}</span>
-            <span class="mini-sum">= ${d.draw_num}</span>
+            <span class="mini-sum" style="color:${sumBg(d.draw_num)}">= ${d.draw_num}</span>
           </div>
         </td>
-        <td><strong>${d.draw_num}</strong></td>
+        <td><strong style="color:${sumBg(d.draw_num)}">${d.draw_num}</strong></td>
         <td><span class="tag ${d.size_type === '大' ? 'tag-big' : 'tag-small'}">${d.size_type}</span></td>
         <td><span class="tag ${d.parity_type === '单' ? 'tag-odd' : 'tag-even'}">${d.parity_type}</span></td>
         <td style="color:var(--ink-3);font-size:12px">${d.draw_time}</td>

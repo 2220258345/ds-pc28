@@ -184,6 +184,7 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
 
         # --- 1. 结算上期 ---
         s_pred = s_amt = s_pnl = s_result = s_note = ""
+        s_pnl_val = 0  # 数值盈亏 (供 API, 避免字符串格式化后丢失类型)
         if pending is not None:
             p_dx, p_ds, amount, p_level = pending
             rate = get_rate(amount, comm)
@@ -235,6 +236,7 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
             s_pred = f"{p_dx}{p_ds}"
             s_amt = str(amount)
             s_pnl = f"{pnl:+d}"
+            s_pnl_val = pnl  # 数值, 供 API
 
             # 18:00-18:50 双中暂停至19:40
             if dx_ok and ds_ok:
@@ -303,9 +305,9 @@ def run_backtest(draws, ladder=LADDER, stop_profit=STOP_PROFIT, stop_loss=STOP_L
             event_count += 1
 
         # 逐期数据 (供 API 返回)
-        ev_s.append(s_pnl if isinstance(s_pnl, (int, float)) else 0)
+        ev_s.append(s_pnl_val)
         ev_d.append(daily_pnl)
-        ev_l.append(b_level if isinstance(b_level, int) and b_level >= 0 else -1)
+        ev_l.append(level if b_pred else -1)
         if s_result == '双中': ev_r.append(0)
         elif s_result == '平局': ev_r.append(1)
         elif '炸' in s_result: ev_r.append(3)

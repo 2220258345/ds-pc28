@@ -19,6 +19,7 @@ PC28 多源采集器
   python collector.py --verify        # 校验数据库
 """
 import argparse
+import base64
 import csv
 import io
 import json
@@ -235,10 +236,94 @@ def fetch_wh28_trend():
 
 
 # ============================================================
+# 数据源 5: pc89.net (AES-CBC 加密接口, 发布最快)
+# ============================================================
+
+# pc89.net 接口加密盐数组 (逆向自 index.js 的 Zi)
+_PC89_ZI = [123, 51, 90, 126, 45, 75, 124, 68, 12, 52, 5, 39, 5, 106, 15, 41]
+
+
+def _pc89_salt():
+    """生成 pc89.net 的密钥盐 (逆向自 G1 函数)。"""
+    return ''.join(chr(_PC89_ZI[t] ^ (t * 7 + 3 & 255)) for t in range(len(_PC89_ZI)))
+
+
+def _pc89_key(t):
+    """根据时间戳 t 生成 AES 密钥 (逆向自 X1 函数)。
+
+    时间段 = t // 172800 (48小时), 密钥 = SHA256(salt|时间段) 前16字节
+    """
+    import hashlib
+    time_seg = t // 172800
+    return hashlib.sha256((_pc89_salt() + "|" + str(time_seg)).encode()).digest()[:16]
+
+
+def _pc89_decrypt(e, iv_b64, t):
+    """解密 pc89.net 接口响应 (AES-CBC + PKCS7)。失败时回退上一时间段。"""
+    from Crypto.Cipher import AES
+    from Crypto.Util.Padding import unpad
+    iv = base64.b64decode(iv_b64)
+    ct = base64.b64decode(e)
+    try:
+        cipher = AES.new(_pc89_key(t), AES.MODE_CBC, iv)
+        return json.loads(unpad(cipher.decrypt(ct), AES.block_size).decode())
+    except Exception:
+        # 跨时间段时回退
+        import hashlib
+        time_seg = (t - 172800) // 172800
+        key = hashlib.sha256((_pc89_salt() + "|" + str(time_seg)).encode()).digest()[:16]
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+        return json.loads(unpad(cipher.decrypt(ct), AES.block_size).decode())
+
+
+def fetch_pc89(nbr=100):
+    """从 pc89.net 拉取最近 nbr 期 (AES 加密接口, 发布速度最快)。
+
+    接口: /api/v1/results?category=jnd&pageSize=N
+    返回字段: qihao=期号, yq=c1, eq=c2, sq=c3, number=和值, stamp=时间戳
+    """
+    nbr = min(nbr, 100)
+    url = f"https://pc89.net/api/v1/results?category=jnd&page=1&pageSize={nbr}&predictCol=1"
+    # pc89.net 校验 Referer 和完整 UA, 用专用请求头避免 403
+    req = urllib.request.Request(url, headers={
+        "User-Agent": UA,
+        "Referer": "https://pc89.net/",
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://pc89.net",
+    })
+    with urllib.request.urlopen(req, timeout=5, context=_CTX) as r:
+        text = r.read().decode("utf-8-sig", errors="replace")
+    data = json.loads(text)
+    if not data.get("e") or not data.get("iv") or not data.get("t"):
+        raise RuntimeError("pc89: 响应缺少加密字段")
+    payload = _pc89_decrypt(data["e"], data["iv"], data["t"])
+    if payload.get("code") != 0:
+        raise RuntimeError(f"pc89: {payload}")
+    rows = []
+    for item in payload["data"]["list"]:
+        # 跳过未开奖期 (stamp=0 或 number=0)
+        if not item.get("stamp") or not item.get("number"):
+            continue
+        dt = datetime.fromtimestamp(int(item["stamp"]), tz=CN_TZ)
+        s = int(item["number"])
+        size, parity, combo = calc_meta(s)
+        rows.append({
+            "draw_nbr": int(item["qihao"]),
+            "draw_date": dt.strftime("%Y-%m-%d"),
+            "draw_time": dt.strftime("%H:%M:%S"),
+            "c1": int(item["yq"]), "c2": int(item["eq"]), "c3": int(item["sq"]),
+            "draw_num": s,
+            "size_type": size, "parity_type": parity, "combination_type": combo,
+        })
+    return rows
+
+
+# ============================================================
 # 多源调度
 # ============================================================
 
 SOURCES = {
+    "pc89":      {"name": "pc89.net",          "fn": lambda: fetch_pc89(100)},
     "jndpc":     {"name": "jndpc.net",         "fn": fetch_jndpc},
     "wh28l":     {"name": "wh28 latest",       "fn": fetch_wh28_latest},
     "wh28":      {"name": "wh28 history",      "fn": fetch_wh28_history},
@@ -249,8 +334,8 @@ SOURCES = {
     "pc28www":   {"name": "www.pc28.help csv", "fn": lambda: fetch_pc28help(2000, "www.pc28.help")},
 }
 
-# 增量更新优先级: 实测 pc28.help json 发布最快 (3.5s), 其次 jndpc (5.3s), wh28 最慢 (11s+)
-INCREMENTAL_ORDER = ["pc28j", "jndpc", "wh28l", "wh28", "wh28t", "pc28wwwj", "pc28", "pc28www"]
+# 增量更新优先级: pc89.net 实测发布最快, 其次 pc28.help json, jndpc, wh28 最慢
+INCREMENTAL_ORDER = ["pc89", "pc28j", "jndpc", "wh28l", "wh28", "wh28t", "pc28wwwj", "pc28", "pc28www"]
 # 全量更新优先级: 大批量源优先 (JSON 优先于 CSV)
 FULL_ORDER = ["pc28j", "pc28wwwj", "pc28", "pc28www"]
 

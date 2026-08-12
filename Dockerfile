@@ -2,7 +2,10 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 复制应用源码和静态资源 (全部使用 Python 标准库, 无需 pip 安装)
+# 安装依赖 (pc89.net 采集器需要 pycryptodome 解密 AES 接口)
+RUN pip install --no-cache-dir pycryptodome
+
+# 复制应用源码和静态资源
 COPY app/ ./app/
 COPY static/ ./static/
 

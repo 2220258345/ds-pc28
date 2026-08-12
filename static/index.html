@@ -137,16 +137,25 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
 }
 .countdown-display {
   font-family: "JetBrains Mono", monospace;
-  font-size: 60px; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: 0; font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em; color: var(--ink);
-  display: flex; align-items: baseline; gap: 2px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   line-height: 1;
 }
-.countdown-display .sep {
-  color: var(--ink-3); font-weight: 400;
-  /* No blink — quiet separator */
+.countdown-display span {
+  font-size: 72px; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 76px; height: 96px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  color: var(--ink);
 }
-.countdown-display.urgent { color: var(--red); }
+.countdown-display.urgent span { color: var(--red); border-color: var(--red-bd); }
+.countdown-display .sep {
+  font-size: 56px; color: var(--ink-3); font-weight: 300;
+  width: auto; height: auto; background: none; border: none;
+}
 .countdown-bar {
   margin-top: 16px; height: 3px;
   background: var(--rule);
@@ -161,6 +170,7 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
 /* Latest Result Panel */
 .result-card {
   padding: 26px 30px;
+  display: flex; flex-direction: column;
 }
 .result-label {
   font-size: 12px; color: var(--ink-3);
@@ -173,38 +183,49 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
   margin-bottom: 14px;
   font-variant-numeric: tabular-nums;
 }
-.balls { display: flex; align-items: center; gap: 10px; }
+.balls { display: flex; align-items: center; gap: 10px; justify-content: center; flex-wrap: nowrap; flex: 1; }
+.balls .ball-sum + .badge { margin-left: 48px; }
+.balls .badge + .badge { margin-left: 6px; }
 .ball {
-  width: 52px; height: 52px; border-radius: 50%;
+  width: 52px; height: 52px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   font-family: "JetBrains Mono", monospace;
-  font-size: 24px; font-weight: 700; color: #fff;
+  font-size: 26px; font-weight: 700; color: #fff;
   transition: transform 0.2s ease;
   /* Flat color, no gradient, no shadow */
 }
 .ball:hover { transform: scale(1.08); }
 .ball-sep {
   font-family: "JetBrains Mono", monospace;
-  font-size: 20px; color: var(--ink-3); font-weight: 400;
+  font-size: 22px; color: var(--ink-3); font-weight: 400;
 }
 .ball-sum {
   font-family: "JetBrains Mono", monospace;
-  font-size: 36px; font-weight: 800; color: var(--ink);
+  font-size: 26px; font-weight: 700;
+  color: #ffffff;
+  background: #0000ff;
+  border-radius: 10px;
+  width: 52px; height: 52px;
+  display: inline-flex; align-items: center; justify-content: center;
   margin-left: 6px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
-.result-badges { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.result-badges { display: flex; gap: 10px; margin-top: 16px; flex-wrap: nowrap; justify-content: center; align-items: center; }
 .badge {
-  padding: 3px 12px; border-radius: var(--radius);
-  font-size: 13px; font-weight: 600;
+  width: 42px; height: 42px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: "DM Sans", sans-serif;
+  font-size: 18px; font-weight: 700;
   letter-spacing: 0.02em;
-  border: 1px solid;
+  border-radius: 6px;
+  padding: 0;
 }
-.badge-big   { background: var(--red-bg);   color: var(--red);   border-color: var(--red-bd); }
-.badge-small { background: var(--green-bg); color: var(--green); border-color: var(--green-bd); }
-.badge-odd   { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-bd); }
-.badge-even  { background: var(--blue-bg);  color: var(--blue);  border-color: var(--blue-bd); }
+.badge-big   { background: #e60012; color: #ffffff; }
+.badge-small { background: #00a0e9; color: #ffffff; }
+.badge-odd   { background: #00a0e9; color: #ffffff; }
+.badge-even  { background: #e60012; color: #ffffff; }
 
 /* ========== Unopened Strip ========== */
 .unopened-strip {
@@ -214,7 +235,7 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
 }
 .unopened-item {
   padding: 10px 18px;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
   flex: 1; min-width: 0;
   border-right: 1px solid var(--rule);
 }
@@ -295,10 +316,10 @@ td .mini-ball {
   font-size: 12px; font-weight: 600;
   border: 1px solid;
 }
-.tag-big   { background: var(--red-bg);   color: var(--red);   border-color: var(--red-bd); }
-.tag-small { background: var(--green-bg); color: var(--green); border-color: var(--green-bd); }
-.tag-odd   { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-bd); }
-.tag-even  { background: var(--blue-bg);  color: var(--blue);  border-color: var(--blue-bd); }
+.tag-big   { background: #e60012; color: #ffffff; border-color: #e60012; }
+.tag-small { background: #00a0e9; color: #ffffff; border-color: #00a0e9; }
+.tag-odd   { background: #00a0e9; color: #ffffff; border-color: #00a0e9; }
+.tag-even  { background: #e60012; color: #ffffff; border-color: #e60012; }
 
 /* Pagination */
 .pagination {
@@ -428,17 +449,10 @@ td .mini-ball {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ========== Ball Colors — desaturated for long-session comfort ========== */
-.c0 { background: #86868b; }
-.c1 { background: #c4444a; }
-.c2 { background: #d4633a; }
-.c3 { background: #c4832a; }
-.c4 { background: #6b9b3f; }
-.c5 { background: #3a8a5a; }
-.c6 { background: #3a8a82; }
-.c7 { background: #4a6fa5; }
-.c8 { background: #5b5b9e; }
-.c9 { background: #8a5aaa; }
+/* ========== Ball Colors — 1:1 复刻 pc89.net ==========
+   C1C2C3 青蓝 (#13b5b1), 和值纯蓝 (#0000ff), 不按号码配色
+*/
+.c0, .c1, .c2, .c3, .c4, .c5, .c6, .c7, .c8, .c9 { background: #13b5b1; }
 
 /* ========== Responsive ========== */
 @media (max-width: 768px) {
@@ -811,6 +825,8 @@ function exitWaitingState() {
 function showLatestResult(d, animate) {
   document.getElementById('latestPeriod').textContent = `第 ${d.draw_nbr} 期`;
 
+  const sizeClass = d.size_type === '大' ? 'badge-big' : 'badge-small';
+  const parityClass = d.parity_type === '单' ? 'badge-odd' : 'badge-even';
   const ballsHtml = `
     <div class="ball c${d.c1}">${d.c1}</div>
     <span class="ball-sep">+</span>
@@ -819,16 +835,11 @@ function showLatestResult(d, animate) {
     <div class="ball c${d.c3}">${d.c3}</div>
     <span class="ball-sep">=</span>
     <span class="ball-sum">${d.draw_num}</span>
-  `;
-  document.getElementById('latestBalls').innerHTML = ballsHtml;
-
-  const sizeClass = d.size_type === '大' ? 'badge-big' : 'badge-small';
-  const parityClass = d.parity_type === '单' ? 'badge-odd' : 'badge-even';
-  document.getElementById('latestBadges').innerHTML = `
     <span class="badge ${sizeClass}">${d.size_type}</span>
     <span class="badge ${parityClass}">${d.parity_type}</span>
-    <span class="badge" style="background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-bd)">${d.combination_type}</span>
   `;
+  document.getElementById('latestBalls').innerHTML = ballsHtml;
+  document.getElementById('latestBadges').innerHTML = '';
 
   if (animate) {
     document.querySelectorAll('#latestBalls .ball').forEach((b, i) => {

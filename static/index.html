@@ -843,6 +843,10 @@ const BASE_EPOCH = 1058114851;
 
 // ========== 状态 ==========
 let serverOffset = 0;        // 服务器时间 - 客户端时间 (秒)
+let serverPeriod = 0;        // 后端返回的当前期号
+let serverCountdown = 0;     // 后端返回的倒计时 (秒)
+let serverCountdownTs = 0;   // 获取倒计时时的服务器时间戳
+let serverMaintenance = false; // 后端返回的维护状态
 let currentPage = 1;
 let totalPages = 1;
 const pageSize = 30;
@@ -852,6 +856,7 @@ let syncInterval = null;
 let refreshInterval = null;   // 定时刷新兜底 (SSE 失败时使用)
 let waitingForResult = false; // 是否在等待新结果
 let waitingPeriod = 0;        // 等待的期号
+let inMaintenanceState = false; // 是否在维护状态
 
 // ========== 工具函数 ==========
 function getServerTs() {
@@ -859,6 +864,13 @@ function getServerTs() {
 }
 
 function getCountdown() {
+  // 优先用后端返回的倒计时 (考虑维护时段修正)
+  if (serverCountdownTs > 0) {
+    const elapsed = getServerTs() - serverCountdownTs;
+    const remaining = serverCountdown - elapsed;
+    return remaining >= CYCLE ? 0 : Math.max(0, Math.ceil(remaining));
+  }
+  // 回退: 本地公式
   const ts = getServerTs();
   const elapsed = ts - BASE_EPOCH;
   const remaining = CYCLE - (elapsed % CYCLE);
@@ -866,6 +878,11 @@ function getCountdown() {
 }
 
 function getCurrentPeriod() {
+  // 优先用后端返回的期号
+  if (serverPeriod > 0) {
+    return serverPeriod;
+  }
+  // 回退: 本地公式
   const ts = getServerTs();
   const elapsed = ts - BASE_EPOCH;
   return Math.floor(elapsed / CYCLE);
@@ -887,6 +904,20 @@ async function syncServerTime() {
     // 服务器生成 server_time 的时刻 ≈ (t1 + t2) / 2 (假设网络对称)
     const midTs = (t1 + t2) / 2;
     serverOffset = data.server_time - midTs;
+    // 缓存后端返回的期号、倒计时、维护状态
+    serverPeriod = data.current_period || 0;
+    serverCountdown = data.countdown || 0;
+    serverCountdownTs = data.server_time || 0;
+    const wasMaintenance = serverMaintenance;
+    serverMaintenance = data.maintenance || false;
+    // 维护状态变化时, 更新显示
+    if (serverMaintenance !== wasMaintenance) {
+      if (serverMaintenance) {
+        enterMaintenanceState();
+      } else if (inMaintenanceState) {
+        exitMaintenanceState();
+      }
+    }
   } catch (e) {
     console.error('时间同步失败:', e);
   }
@@ -908,7 +939,10 @@ function setupSSE() {
       const data = JSON.parse(e.data);
       if (data.server_time) {
         serverOffset = data.server_time - Date.now() / 1000;
-        console.log('[sse] hello, offset=', serverOffset.toFixed(3));
+        serverPeriod = data.current_period || serverPeriod;
+        serverCountdown = data.countdown || serverCountdown;
+        serverCountdownTs = data.server_time || serverCountdownTs;
+        console.log('[sse] hello, offset=', serverOffset.toFixed(3), 'period=', serverPeriod);
       }
     } catch (err) {}
   });
@@ -916,6 +950,12 @@ function setupSSE() {
   evtSource.addEventListener('new_draw', (e) => {
     try {
       const data = JSON.parse(e.data);
+      // 更新期号和倒计时缓存
+      if (data.current_period) serverPeriod = data.current_period;
+      if (data.countdown !== undefined) {
+        serverCountdown = data.countdown;
+        serverCountdownTs = data.server_time || serverCountdownTs;
+      }
       if (data.latest) {
         console.log('[sse] 收到新数据 #' + data.latest.draw_nbr);
         onNewDraw(data.latest);
@@ -943,11 +983,18 @@ function onNewDraw(latest) {
   if (waitingForResult) {
     exitWaitingState();
   }
+  // 维护结束后收到新数据, 退出维护状态
+  if (inMaintenanceState) {
+    exitMaintenanceState();
+  }
 }
 
 // ========== 倒计时 ==========
 function updateCountdown() {
   if (waitingForResult) return; // 等待开奖中, 暂停倒计时
+
+  // 维护时段检测: 倒计时归零时检查后端维护状态
+  if (inMaintenanceState) return;
 
   const remaining = getCountdown();
   const period = getCurrentPeriod();
@@ -972,10 +1019,53 @@ function updateCountdown() {
     bar.style.background = 'var(--accent)';
   }
 
-  // 倒计时归零, 进入等待开奖状态
+  // 倒计时归零: 先检查是否进入维护时段, 否则进入等待开奖
   if (remaining < 1) {
-    enterWaitingState(period + 1);
+    if (serverMaintenance) {
+      enterMaintenanceState();
+    } else {
+      enterWaitingState(period + 1);
+    }
   }
+}
+
+// ========== 维护时段 ==========
+function enterMaintenanceState() {
+  if (inMaintenanceState) return;
+  inMaintenanceState = true;
+  waitingForResult = false;
+
+  const display = document.getElementById('countdown');
+  display.classList.remove('urgent');
+  display.innerHTML = '<span style="font-size:22px;color:var(--amber);font-family:JetBrains Mono,monospace;letter-spacing:0.02em">维护中</span>';
+  document.getElementById('nextPeriod').textContent = '维护时段';
+  document.getElementById('cdBar').style.width = '0%';
+
+  // 显示维护提示
+  document.getElementById('latestPeriod').textContent = '维护时段 (19:00-19:30)';
+  document.getElementById('latestBalls').innerHTML = `
+    <div class="ball c0" style="opacity:0.3">·</div>
+    <span class="ball-sep" style="opacity:0.3">·</span>
+    <div class="ball c0" style="opacity:0.3">·</div>
+    <span class="ball-sep" style="opacity:0.3">·</span>
+    <div class="ball c0" style="opacity:0.3">·</div>
+    <span class="ball-sep" style="opacity:0.3">=</span>
+    <span class="ball-sum" style="opacity:0.3">·</span>
+  `;
+  document.getElementById('latestBadges').innerHTML = '';
+
+  console.log('[维护] 进入维护时段, 暂停倒计时');
+}
+
+function exitMaintenanceState() {
+  if (!inMaintenanceState) return;
+  inMaintenanceState = false;
+  // 恢复倒计时显示
+  const display = document.getElementById('countdown');
+  display.innerHTML = '<span id="cdMin">00</span><span class="sep">:</span><span id="cdSec">00</span>';
+  // 立即同步时间, 获取最新期号和倒计时
+  syncServerTime();
+  console.log('[维护] 维护时段结束, 恢复倒计时');
 }
 
 function enterWaitingState(expectedPeriod) {

@@ -82,6 +82,11 @@ def do_update():
             row = db.get_latest_draw()
             if row:
                 latest = db.row_to_latest(row)
+                # 更新参考点 (保证期号计算始终基于最新数据)
+                from datetime import datetime as _dt
+                d = _dt.strptime(f"{row[1]} {row[2]}", '%Y-%m-%d %H:%M:%S')
+                ref_ts = d.replace(tzinfo=time_sync.CN_TZ).timestamp()
+                time_sync.set_reference(row[0], ref_ts)
                 now_ts = time_sync.get_synced_ts()
                 period, remaining = time_sync.calc_countdown(now_ts)
                 sse.sse_broadcast("new_draw", {

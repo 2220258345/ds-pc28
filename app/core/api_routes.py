@@ -114,6 +114,15 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
 
         def _handle_time(self):
             now_ts = time_sync.get_synced_ts()
+            # 自动设置参考点 (若未设置, 从数据库读取最新一期)
+            ref_nbr, ref_ts = time_sync.get_reference()
+            if ref_nbr is None:
+                row = db.get_latest_draw()
+                if row:
+                    from datetime import datetime as _dt
+                    d = _dt.strptime(f"{row[1]} {row[2]}", '%Y-%m-%d %H:%M:%S')
+                    ref_ts = d.replace(tzinfo=time_sync.CN_TZ).timestamp()
+                    time_sync.set_reference(row[0], ref_ts)
             period, remaining = time_sync.calc_countdown(now_ts)
             self._json(200, json.dumps({
                 "server_time": now_ts,
@@ -122,6 +131,7 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 "current_period": period,
                 "countdown": remaining,
                 "time_offset": time_sync.get_offset(),
+                "maintenance": time_sync.in_maintenance(now_ts),
             }, ensure_ascii=False))
 
         def _handle_latest(self):

@@ -2,8 +2,8 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 安装依赖 (pc89.net 采集器需要 pycryptodome 解密 AES 接口)
-RUN pip install --no-cache-dir pycryptodome
+# 安装依赖 (pc89.net 采集器需要 pycryptodome 解密 + requests 加速)
+RUN pip install --no-cache-dir pycryptodome requests
 
 # 复制应用源码和静态资源
 COPY app/ ./app/

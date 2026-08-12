@@ -30,7 +30,11 @@ import sys
 import time
 import urllib.request
 import urllib.error
+import warnings
 from datetime import datetime, timedelta, timezone
+
+# 抑制 requests 的 InsecureRequestWarning (pc89.net 不验证证书)
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 # 项目根目录 (app/collector.py → app/ → 项目根), 与 core/db.py 保持一致
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -281,19 +285,20 @@ def fetch_pc89(nbr=100):
 
     接口: /api/v1/results?category=jnd&pageSize=N
     返回字段: qihao=期号, yq=c1, eq=c2, sq=c3, number=和值, stamp=时间戳
+
+    注意: urllib 访问 pc89 需 16s (TLS/HTTP 实现差异), 改用 requests 仅需 0.6s
     """
+    import requests
     nbr = min(nbr, 100)
     url = f"https://pc89.net/api/v1/results?category=jnd&page=1&pageSize={nbr}&predictCol=1"
-    # pc89.net 校验 Referer 和完整 UA, 用专用请求头避免 403
-    req = urllib.request.Request(url, headers={
+    resp = requests.get(url, headers={
         "User-Agent": UA,
         "Referer": "https://pc89.net/",
         "Accept": "application/json, text/plain, */*",
         "Origin": "https://pc89.net",
-    })
-    with urllib.request.urlopen(req, timeout=5, context=_CTX) as r:
-        text = r.read().decode("utf-8-sig", errors="replace")
-    data = json.loads(text)
+    }, verify=False, timeout=5)
+    resp.raise_for_status()
+    data = json.loads(resp.text)
     if not data.get("e") or not data.get("iv") or not data.get("t"):
         raise RuntimeError("pc89: 响应缺少加密字段")
     payload = _pc89_decrypt(data["e"], data["iv"], data["t"])

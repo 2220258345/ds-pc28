@@ -573,14 +573,6 @@ td .mini-ball {
 .bt-chart > div { width: 100%; height: 280px; }
 .bt-chart.bt-tall > div { height: 320px; }
 .bt-chart.bt-strip > div { height: 60px; }
-.bt-chart.bt-realtime { border: 1px solid var(--accent-bd, #b9d0f5); background: linear-gradient(180deg, rgba(67,97,238,0.04), var(--paper-2)); }
-.bt-chart.bt-realtime h3 { display: flex; justify-content: space-between; align-items: center; }
-.bt-chart.bt-realtime h3 > span:first-child { color: var(--accent, #4361ee); }
-.bt-chart.bt-realtime > div { height: 300px; }
-.rt-status { font-size: var(--text-xs); color: var(--ink-3); font-weight: 500; padding: 2px 10px; border-radius: 10px; background: var(--paper-3, #f0f2f7); }
-.rt-status.live { color: #fff; background: var(--green, #30a46c); animation: rt-pulse 1.6s ease-in-out infinite; }
-.rt-status.waiting { color: var(--amber, #e8a317); }
-@keyframes rt-pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
 @media (max-width: 640px) {
   .bt-controls { gap: 6px; }
   .bt-ctrl-row { gap: 6px; }
@@ -596,7 +588,6 @@ td .mini-ball {
   .bt-chart > div { height: 220px; }
   .bt-chart.bt-tall > div { height: 260px; }
   .bt-chart.bt-strip > div { height: 52px; }
-  .bt-chart.bt-realtime > div { height: 240px; }
 }
 
 /* ========== Ball Colors — 1:1 复刻 pc89.net ==========
@@ -822,14 +813,6 @@ td .mini-ball {
 
       <div class="bt-summary" id="btSummary"></div>
 
-      <div class="bt-chart bt-realtime">
-        <h3>
-          <span>今日实时盈亏曲线</span>
-          <span class="rt-status" id="rtStatus">等待数据</span>
-        </h3>
-        <div id="btRealtime"></div>
-      </div>
-
       <div class="bt-chart"><h3>累计盈亏曲线</h3><div id="btEquity"></div></div>
       <div class="bt-chart bt-strip"><h3>炸次分布（每天炸几次）</h3><div id="btBurststrip"></div></div>
       <div class="bt-chart"><h3>每日盈亏</h3><div id="btDaily"></div></div>
@@ -1003,14 +986,6 @@ function onNewDraw(latest) {
   // 维护结束后收到新数据, 退出维护状态
   if (inMaintenanceState) {
     exitMaintenanceState();
-  }
-  // E9 回测 tab 实时盈亏曲线: 标记为待刷新, btAutoTimer 会拉取新数据后重绘
-  if (btInited) {
-    const statusEl = document.getElementById('rtStatus');
-    if (statusEl && statusEl.className !== 'rt-status waiting') {
-      statusEl.textContent = '新数据到达, 计算中...';
-      statusEl.className = 'rt-status waiting';
-    }
   }
 }
 
@@ -1681,113 +1656,6 @@ function btDrawDrill(date) {
   }, {notMerge:true});
 }
 
-// ========== 实时盈亏曲线 (今日) ==========
-let rtLastDate = null;
-let rtLastPeriodCount = 0;
-
-function btDrawRealtime() {
-  if (!btCurCfg || !BT_TIMES || !BT_TIMES.length) return;
-  const statusEl = document.getElementById('rtStatus');
-
-  // 找最新一天 (数据库最新数据所在日期)
-  const today = BT_TIMES[BT_TIMES.length - 1].slice(0, 10);
-  const range = btDateIdx[today];
-  if (!range) {
-    if (statusEl) { statusEl.textContent = '今日无数据'; statusEl.className = 'rt-status waiting'; }
-    return;
-  }
-
-  const cfg = btCurCfg;
-  const pts = [];
-  for (let i = range[0]; i < range[1]; i++) {
-    pts.push({
-      t: BT_TIMES[i],           // "YYYY-MM-DD HH:MM"
-      c: cfg.c[i],              // 累计盈亏
-      d: cfg.d[i],              // 当期日盈亏
-      l: cfg.l[i],              // level (-1=未下注)
-      r: cfg.r[i],              // 结果 (0=双中 1=平 2=双错 3=炸 4=无)
-    });
-  }
-  if (!pts.length) {
-    if (statusEl) { statusEl.textContent = '今日无数据'; statusEl.className = 'rt-status waiting'; }
-    return;
-  }
-
-  // 状态标识
-  const lastPt = pts[pts.length - 1];
-  const hasNewData = (today !== rtLastDate) || (pts.length !== rtLastPeriodCount);
-  rtLastDate = today;
-  rtLastPeriodCount = pts.length;
-  if (statusEl) {
-    statusEl.textContent = `${today} · ${pts.length}期 · 累计${btSgn(lastPt.c)}${BT_FMT.format(lastPt.c)}`;
-    statusEl.className = 'rt-status live';
-  }
-
-  // 按结果着色: 双中绿 / 双错红 / 平黄 / 炸深红
-  const colorByR = r => r === 0 ? '#30a46c' : r === 2 ? '#e5484d' : r === 3 ? '#c92626' : r === 1 ? '#e8a317' : '#8b8fa3';
-  const resultLabel = r => BT_RES[r] || '无';
-
-  // 档位序列 (level, -1为未下注)
-  const levelData = pts.map(p => p.l >= 0 ? p.l : null);
-
-  btCharts.realtime.setOption({
-    title: { text: `今日累计 ${btSgn(lastPt.c)}${BT_FMT.format(lastPt.c)} · 当日 ${btSgn(pts[pts.length-1].d)}${BT_FMT.format(pts[pts.length-1].d)}`,
-             textStyle: { color: lastPt.c >= 0 ? '#30a46c' : '#e5484d', fontSize: 13, fontWeight: 600 },
-             left: 8, top: 4 },
-    tooltip: Object.assign({}, BT_TT, { formatter: p => {
-      const i = btSafeIdx(p);
-      if (i < 0 || i >= pts.length) return '';
-      const pt = pts[i];
-      let s = `${pt.t.slice(5)} · 累计 ${btSgn(pt.c)}${BT_FMT.format(pt.c)}`;
-      s += ` · 当期 ${btSgn(pt.d)}${BT_FMT.format(pt.d)}`;
-      s += ` · ${resultLabel(pt.r)}`;
-      if (pt.l >= 0) s += ` · L${pt.l}`;
-      return s;
-    }}),
-    legend: { show: true, textStyle: { color: '#545870', fontSize: 12 }, top: 4, right: 12,
-              data: ['累计盈亏', '档位'] },
-    grid: { left: 64, right: 48, top: 36, bottom: 50 },
-    xAxis: { type: 'category', data: pts.map(p => p.t.slice(11)),
-             axisLabel: { color: '#8b8fa3', fontSize: 12, interval: Math.max(0, Math.floor(pts.length / 10) - 1) },
-             axisLine: { lineStyle: { color: '#e4e7ed' } } },
-    yAxis: [
-      { type: 'value', name: '盈亏', nameTextStyle: { color: '#8b8fa3', fontSize: 11 },
-        axisLabel: { color: '#8b8fa3', fontSize: 12, formatter: v => BT_FMT.format(v) },
-        splitLine: { lineStyle: { color: '#eef0f5' } } },
-      { type: 'value', name: '档位', min: 0, max: 6, interval: 1,
-        nameTextStyle: { color: '#8b8fa3', fontSize: 11 },
-        axisLabel: { color: '#8b8fa3', fontSize: 12 }, splitLine: { show: false } }
-    ],
-    series: [
-      { name: '累计盈亏', type: 'line', data: pts.map(p => p.c), smooth: false, symbol: 'none',
-        lineStyle: { color: '#4361ee', width: 2 },
-        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                              colorStops: [{ offset: 0, color: 'rgba(67,97,238,0.18)' },
-                                           { offset: 1, color: 'rgba(67,97,238,0.01)' }] } },
-        markLine: { symbol: 'none', silent: true, lineStyle: { color: '#e8a317', type: 'dashed', width: 1 },
-                    label: { show: true, formatter: '0', position: 'insideEndTop', color: '#8b8fa3', fontSize: 11 },
-                    data: [{ yAxis: 0 }] },
-        markPoint: pts.length > 0 ? {
-          symbol: 'circle', symbolSize: 8,
-          itemStyle: { color: colorByR(lastPt.r), borderColor: '#fff', borderWidth: 2 },
-          label: { show: false },
-          data: [{ coord: [pts.length - 1, lastPt.c] }]
-        } : undefined
-      },
-      { name: '档位', type: 'line', yAxisIndex: 1, data: levelData, step: 'end',
-        smooth: false, symbol: 'none', lineStyle: { color: '#e8a317', width: 1.5, type: 'dashed' } }
-    ]
-  }, { notMerge: true });
-}
-
-function btRealtimeRefresh() {
-  // 仅在 backtest tab 已初始化且可见时刷新
-  if (!btInited || !btCurCfg) return;
-  const tab = document.getElementById('tab-backtest');
-  if (!tab || !tab.classList.contains('active')) return;
-  btDrawRealtime();
-}
-
 function btApplyRange() {
   const from = document.getElementById('btFrom').value, to = document.getElementById('btTo').value;
   let sel;
@@ -1838,7 +1706,6 @@ function btRebuild() {
         '梯度[' + m.ladder.join(',') + ']';
       btApplyRange();
       btFillDaySel();
-      btDrawRealtime();   // 顶部实时盈亏曲线
     } catch(e) {
       sub.textContent = '回测计算失败: ' + e.message;
     }
@@ -1847,9 +1714,9 @@ function btRebuild() {
 
 function btInitCharts() {
   if (btInited) return;
-  ['equity','burststrip','daily','drawdown','outcomes','burstHour','drilldown','realtime'].forEach(id => {
+  ['equity','burststrip','daily','drawdown','outcomes','burstHour','drilldown'].forEach(id => {
     const map = {equity:'btEquity', burststrip:'btBurststrip', daily:'btDaily', drawdown:'btDrawdown',
-                 outcomes:'btOutcomes', burstHour:'btBurstHour', drilldown:'btDrilldown', realtime:'btRealtime'};
+                 outcomes:'btOutcomes', burstHour:'btBurstHour', drilldown:'btDrilldown'};
     btCharts[id] = echarts.init(document.getElementById(map[id]), null, {renderer:'canvas'});
   });
   window.addEventListener('resize', () => Object.values(btCharts).forEach(c => c.resize()));
@@ -1905,7 +1772,7 @@ async function btInit() {
   } catch(e) {
     sub.textContent = '数据加载失败: ' + e.message + ' (请确认服务器已启动)';
   }
-  // 每 10 秒检查是否有新数据, 有则自动重载图表 (实时盈亏曲线)
+  // 每 30 秒检查是否有新数据, 有则自动重载图表
   btAutoTimer = setInterval(async () => {
     try {
       const res = await fetch('/api/status', {cache:'no-store'});
@@ -1915,7 +1782,7 @@ async function btInit() {
       }
       if (s.max_nbr != null) btLastMaxNbr = s.max_nbr;
     } catch(e) {}
-  }, 10000);
+  }, 30000);
 }
 
 init();

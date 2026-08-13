@@ -881,6 +881,26 @@ tr.row-range-end {
   .page-btn { padding: var(--space-1) var(--space-3); font-size: var(--text-sm); }
   .tab-btn { padding: var(--space-2) var(--space-3); font-size: var(--text-xs); }
 }
+.risk-note {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(232, 163, 23, 0.08);
+  border: 1px solid rgba(232, 163, 23, 0.35);
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
+.bt-warning {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(232, 163, 23, 0.08);
+  border: 1px solid rgba(232, 163, 23, 0.35);
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
 </style>
 </head>
 <body>
@@ -943,6 +963,10 @@ tr.row-range-end {
 
     <!-- Unopened strip -->
     <div class="unopened-strip" id="unopenedStrip"></div>
+
+    <div class="risk-note">
+      ⚠️ 开奖为独立随机事件，遗漏 / 冷热不代表下一次更易或更难出现，仅供学习研究。
+    </div>
   </div>
 </section>
 
@@ -1047,7 +1071,7 @@ tr.row-range-end {
     <!-- Sum Unopened Tab -->
     <div class="tab-content" id="tab-sum-unopened">
       <div class="sum-unopened-wrap">
-        <div class="sum-unopened-tip">特码 = c1 + c2 + c3 的和值 · 显示每个和值多少期未出 · 红色为热门遗漏</div>
+        <div class="sum-unopened-tip">特码 = c1 + c2 + c3 的和值 · 显示每个和值多少期未出，并与理论平均间隔对比（供参考，不代表可预测）</div>
         <div class="sum-unopened-grid" id="sumUnopenedGrid">
           <div class="loading">加载中</div>
         </div>
@@ -1057,6 +1081,9 @@ tr.row-range-end {
     <!-- Backtest Tab (E9 回测, 整页合并自 backtest_chart.html) -->
     <div class="tab-content" id="tab-backtest">
       <div class="bt-sub" id="btSubtitle">数据加载中…</div>
+      <div class="bt-warning">
+        ⚠️ 回测为历史样本结果，不构成预测优势；研究显示该策略效应近期已衰减，详见研究报告。
+      </div>
 
       <div class="bt-controls">
         <div class="bt-ctrl-row"><label>方向</label>
@@ -1596,8 +1623,8 @@ async function loadTrend(limit) {
 }
 
 // ========== 未开期数 (增强版) ==========
-const STATUS_LABEL = { normal: '正常', warm: '偏热', hot: '偏冷', extreme: '极冷' };
-const STATUS_COLOR = { normal: '#30a46c', warm: '#e8a317', hot: '#e8763a', extreme: '#e5484d' };
+const STATUS_LABEL = { normal: '正常', cold: '偏冷', very_cold: '冷', extreme: '极冷' };
+const STATUS_COLOR = { normal: '#30a46c', cold: '#e8a317', very_cold: '#e8763a', extreme: '#e5484d' };
 
 async function loadUnopened() {
   try {
@@ -1631,15 +1658,17 @@ async function loadUnopened() {
       { key: '小双', desc: '小 + 双' },
     ];
     document.getElementById('unopenedGrid').innerHTML = allTypes.map(t => {
-      const it = byType[t.key] || { current: 0, avg: 0, max: 0, status: 'normal', ratio: 0 };
+      const it = byType[t.key] || { current: 0, avg: 0, max: 0, med: 0, p95: 0, p99: 0, status: 'normal', ratio: 0 };
       const cur = it.current;
       const statusColor = STATUS_COLOR[it.status] || '#545870';
       const statusLabel = STATUS_LABEL[it.status] || '正常';
-      return `<div class="unopened-card ${it.status === 'extreme' ? 'extreme' : it.status === 'hot' ? 'hot' : ''}">
+      const cardCls = it.status === 'extreme' ? 'extreme' : it.status === 'very_cold' ? 'hot' : '';
+      return `<div class="unopened-card ${cardCls}">
         <div class="type-label">${t.key}<span class="type-status" style="background:${statusColor}">${statusLabel}</span></div>
         <div class="type-count" style="color:${statusColor}">${cur}</div>
         <div class="type-desc">${t.desc}</div>
-        <div class="type-meta">平均 <b>${it.avg}</b> · 最大 <b>${it.max}</b></div>
+        <div class="type-meta">平均 <b>${it.avg}</b> · 中位 <b>${it.med}</b> · 最大 <b>${it.max}</b></div>
+        <div class="type-meta">P95 <b>${it.p95}</b> · P99 <b>${it.p99}</b> · 当前/平均 <b>${it.ratio}×</b></div>
         <div class="type-bar">
           <div class="type-bar-fill" style="width:${Math.min(100, (cur / Math.max(it.max, 1)) * 100)}%; background:${statusColor}"></div>
         </div>
@@ -1964,20 +1993,21 @@ async function loadSumUnopened() {
       return g.sums.map((s, i) => {
         const cnt = g.unopened[i];
         const cntStr = cnt < 0 ? '—' : cnt;
-        // 热度判定: 按赔率档位估算理论周期, 遗漏超过 2 倍理论周期为 hot, 1.5 倍为 warm
-        // 理论周期 ≈ 1 / 概率, 概率 = 该和值组合数 / 1000
-        // 简化: 用赔率近似 (高赔率 = 低概率 = 长周期)
-        const theoreticalPeriod = Math.max(20, g.odds * 1.2);
+        // 理论平均间隔由后端按 3d10 真实概率计算: 1 / probability
+        const theoreticalPeriod = g.theoretical_period || 0;
         let hotClass = '';
-        if (cnt > theoreticalPeriod * 2) hotClass = 'hot';
-        else if (cnt > theoreticalPeriod * 1.5) hotClass = 'warm';
+        if (cnt >= 0 && theoreticalPeriod > 0) {
+          const ratio = cnt / theoreticalPeriod;
+          if (ratio >= 2) hotClass = 'hot';
+          else if (ratio >= 1.5) hotClass = 'warm';
+        }
         return `<div class="sum-card">
           <div class="sc-head">
             <span class="sc-num">${String(s).padStart(2,'0')}</span>
             <span class="sc-odd">${oddsStr}</span>
           </div>
           <div class="sc-count ${hotClass}">${cntStr}</div>
-          <div class="sc-label">期未出</div>
+          <div class="sc-label">期未出 · 理论${Math.round(theoreticalPeriod)}期</div>
         </div>`;
       }).join('');
     }).join('');

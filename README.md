@@ -78,49 +78,55 @@ E9 的统计优势：双中率 25.3% > 双错率 24.7%（每注期望 +0.89，�
 
 ## 五、文件说明
 
-| 文件 | 说明 |
+| 路径 | 说明 |
 |------|------|
-| `backtest_e9.py` | E9 回测引擎（自包含，不依赖外部包） |
-| `pc28_history.db` | SQLite 数据库（31248期，截至2026-08-11 15:30） |
-| `db_setup.py` | 数据库初始化/迁移/校验/导出脚本 |
-| `fetch_update.py` | 开奖数据自动更新脚本（拉取最新期并入库） |
-| `generate_chart.py` | 生成 E9 回测交互式图表仪表盘 |
-| `backtest_chart.html` | E9 回测图表仪表盘（曲线+时间筛选+按日下钻） |
-| `backtest_daily.html` | 回测生成的每日统计 |
-| `backtest_today.html` | 回测生成的今日逐期明细 |
-| `server.py` | HTTP 服务器 + 后台定时采集（端口/间隔可配置） |
-| `collector.py` | 多源采集器（4 个 API 故障切换 + 增量/全量更新） |
+| `app/config.py` | 统一配置：数据库后端与连接参数 |
+| `app/storage/` | 存储抽象层（SQLite / PostgreSQL / MySQL） |
+| `app/migrate_db.py` | SQLite -> 目标后端迁移脚本 |
+| `app/core/db.py` | 数据库门面（委托 storage） |
+| `app/server.py` | 采集服务器 + HTTP/SSE（容器内默认 8000） |
+| `app/api_server.py` | 轻量只读 API 服务器 |
+| `app/collector.py` | 多源采集器（pc89/jndpc/wh28/pc28.help 等） |
+| `app/backtest_e9.py` | E9 回测引擎 |
+| `scripts/db_setup.py` | 数据维护：CSV 导入/校验/导出 |
+| `scripts/fetch_update.py` | 数据更新脚本（复用 collector） |
+| `scripts/strategy_search.py` | 统计搜索：公平性/方法/EV/洗牌检验 |
+| `scripts/generate_chart.py` | 旧版独立图表模板生成器 |
+| `static/index.html` | 前端看板（数据/走势/未开/特码/回测） |
+| `pc28_history.db` | SQLite 源库（当前 32189 期，期号 3436946~3469134） |
+| `requirements.txt` | Python 依赖 |
+| `tests/test_storage.py` | 存储层回归测试 |
 | `Dockerfile` / `docker-compose.yml` / `.dockerignore` | Docker 部署配置 |
 
 ## 六、回测脚本使用
 
 ```bash
 # 更新开奖数据 (从 pc28.help 拉取最近2000期, 自动入库并校验)
-python fetch_update.py
+python scripts/fetch_update.py
 
 # 其他更新选项
-python fetch_update.py --nbr 5000          # 指定拉取期数 (最多30000)
-python fetch_update.py --source wh28 --days 1  # 备用源 wh28.com (每天仅最新100期)
-python fetch_update.py --verify            # 仅校验数据库完整性
+python scripts/fetch_update.py --nbr 5000          # 指定拉取期数 (最多30000)
+python scripts/fetch_update.py --source wh28 --days 1  # 备用源 wh28.com (每天仅最新100期)
+python scripts/fetch_update.py --verify            # 仅校验数据库完整性
 
 # 首次使用: 初始化数据库 (从 CSV 导入, 现已迁移完成)
-python db_setup.py --verify
+python scripts/db_setup.py --verify
 
 # 全量回测 + 每日统计 HTML
-python backtest_e9.py
+python app/backtest_e9.py
 
 # 今日逐期明细 HTML
-python backtest_e9.py --today
-python backtest_e9.py --today --date 2026-08-07
+python app/backtest_e9.py --today
+python app/backtest_e9.py --today --date 2026-08-07
 
 # 数据库导出为 CSV (备份/交换用)
-python db_setup.py --export
+python scripts/db_setup.py --export
 
 # 止盈止损网格扫描（8×8=64种组合）
-python backtest_e9.py --stops
+python app/backtest_e9.py --stops
 
 # 交互式图表仪表盘 (曲线 + 时间范围选择 + 按日下钻)
-python generate_chart.py
+python scripts/generate_chart.py
 ```
 
 ### 修改配置
@@ -132,9 +138,9 @@ STOP_PROFIT = 2500   # 止盈（None=不设）
 STOP_LOSS = None     # 止损（None=不设）
 ```
 
-### 数据存储（SQLite）
+### 数据存储
 
-数据存放在 `pc28_history.db` 的 `draws` 表：
+数据统一存放在 `draws` 表（SQLite / PostgreSQL / MySQL 同构）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -147,11 +153,11 @@ STOP_LOSS = None     # 止损（None=不设）
 | `parity_type` | TEXT | 单双（单/双） |
 | `combination_type` | TEXT | 组合（大双/小单/...） |
 
-更新数据后执行 `python db_setup.py --verify` 可校验完整性（数量、主键唯一、和值、期号连续）。
+更新数据后执行 `python scripts/db_setup.py --verify` 可校验完整性（数量、主键唯一、和值、期号连续）。
 
-## 七、Docker 部署（推荐）
+## 七、Docker 部署（PostgreSQL，推荐）
 
-通过 Docker 一键启动仪表盘服务，自动后台定时采集最新数据。
+当前部署采用 **PostgreSQL 16 + 应用容器**，数据持久化在 `pg_data` 卷；应用容器内监听 8000，映射到宿主机 8001（因 8000 常被占用）。
 
 ### 7.1 构建并启动
 
@@ -159,74 +165,105 @@ STOP_LOSS = None     # 止损（None=不设）
 docker compose up -d --build
 ```
 
-启动后访问 http://localhost:8000/ 即可看到回测图表仪表盘。
+启动后访问 http://localhost:8001/ 。
 
-### 7.2 服务说明
+### 7.2 服务与容器
 
-- **镜像**：基于 `python:3.10-slim`，全部使用 Python 标准库，**无需 pip 安装**
-- **入口**：`python -u server.py --port 8000`
-- **采集**：后台线程每 4 分钟增量采集（多源故障切换，含限流重试）
-- **API**：
-  - `GET /` 仪表盘页面（`backtest_chart.html`）
-  - `GET /api/draws` 全量开奖数据 JSON
-  - `GET /api/status` 采集器状态
-  - `POST /api/update` 立即触发采集
-  - `POST /api/toggle` 暂停/恢复自动采集
-- **数据持久化**：命名卷 `pc28_data` 挂载到 `/app/data`（SQLite 数据库存放于此）
+| 容器 | 镜像 | 说明 |
+|------|------|------|
+| `pc28-postgres` | postgres:16-alpine | PostgreSQL，内部 5432 |
+| `pc28-app` | pc28-app:local | server.py + 后台采集，8001->8000 |
+
+数据库连接由 `docker-compose.yml` 注入：`DB_BACKEND=postgres`、`DB_HOST=postgres`、`DB_PORT=5432`、`DB_NAME=pc28`、`DB_USER=pc28`、`DB_PASSWORD=pc28pass`。
 
 ### 7.3 常用命令
 
 ```bash
 docker compose up -d --build   # 构建并后台启动
-docker compose logs -f         # 查看实时日志
-docker compose ps               # 查看运行状态
-docker compose restart         # 重启服务
-docker compose down            # 停止并移除容器（卷保留）
-docker compose down -v         # 停止并删除数据卷（清空数据库）
+docker compose ps              # 查看运行状态
+docker compose logs -f app     # 查看应用日志
+docker compose restart app     # 重启应用
+docker compose down            # 停止（保留 pg_data 卷）
+docker compose down -v         # 停止并清空 PostgreSQL 数据
 ```
 
-### 7.4 调整端口 / 采集间隔
+### 7.4 首次初始化 / 迁移数据
 
-修改 `docker-compose.yml` 的 `ports` 调整端口映射：
+从本地 SQLite 源库迁移到 PostgreSQL：
+
+```bash
+docker compose run --rm \
+  -v "C:/path/to/pc28_history.db:/migration/pc28_history.db" \
+  app python app/migrate_db.py --source-path /migration/pc28_history.db
+```
+
+迁移脚本以只读方式读取源 SQLite，不会改动源库；目标后端由 `DB_BACKEND` 决定。
+
+### 7.5 补采（回填缺口）
+
+由于容器内 `pc28.help` 域名会被解析成 `0.0.0.0` 而无法直连，补采在宿主机执行（宿主机需有代理 `127.0.0.1:10808`），再同步回 PostgreSQL：
+
+```bash
+# 1. 宿主机补采到本地 SQLite
+python scripts/fetch_update.py --nbr 2000
+
+# 2. 同步回 PostgreSQL
+docker compose run --rm \
+  -v "C:/path/to/pc28_history.db:/migration/pc28_history.db" \
+  app python app/migrate_db.py --source-path /migration/pc28_history.db
+```
+
+`--nbr` 建议 2000（约最近 4.9 天，可回填近期缺口）；如需更长历史可调大，最大 30000。
+
+### 7.6 调整端口
+
+修改 `docker-compose.yml` 的 `ports`：
 
 ```yaml
 ports:
   - "9000:8000"   # 宿主机 9000 -> 容器 8000
 ```
 
-采集间隔通过环境变量或命令参数调整（默认 4 分钟）：
-
-```yaml
-command: ["python", "-u", "server.py", "--port", "8000", "--interval", "2"]
-```
-
-### 7.5 数据备份 / 迁移
-
-```bash
-# 备份数据库到宿主机当前目录
-docker cp pc28-dashboard:/app/data/pc28_history.db ./pc28_history.db.bak
-
-# 从备份恢复
-docker cp ./pc28_history.db.bak pc28-dashboard:/app/data/pc28_history.db
-docker compose restart
-```
-
-### 7.6 首次使用（空数据库）
-
-容器首次启动时数据库为空，后台采集器会自动从 `wh28.com` 拉取最新 100 期并入库。
-如需全量回补历史数据，进入容器手动执行：
-
-```bash
-docker exec -it pc28-dashboard python collector.py --full 30000
-```
-
 ### 7.7 本地直接运行（无 Docker）
 
 ```bash
-python server.py                      # 默认 8000 端口, 4分钟采集间隔
-python server.py --port 9000          # 指定端口
-python server.py --interval 2         # 2分钟采集间隔
+python app/server.py          # SQLite，默认 8000
+python app/server.py --port 9000
+DB_BACKEND=postgres DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=pc28 DB_USER=pc28 DB_PASSWORD=pc28pass python app/server.py
 ```
+
+## 数据库后端切换（SQLite / PostgreSQL / MySQL）
+
+存储层已统一到 `app/storage`，通过环境变量选择后端，上层代码与脚本无需改动。
+当前部署使用 PostgreSQL（见第七节），本地无 Docker 时默认 SQLite。
+
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `DB_BACKEND` | `sqlite` / `postgres` / `mysql` | `sqlite` |
+| `DB_URI` | 完整连接串（优先级高于 `DB_BACKEND`） | - |
+| `DB_DIR` | SQLite 数据库目录 | 项目根目录 |
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | PostgreSQL/MySQL 连接参数 | - |
+| `DB_DRIVER` | PostgreSQL: `psycopg2`；MySQL: `pymysql` | `psycopg2` / `pymysql` |
+
+示例：
+
+```bash
+# SQLite（默认）
+python app/server.py
+
+# PostgreSQL
+DB_BACKEND=postgres DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=pc28 \
+  DB_USER=postgres DB_PASSWORD=secret python app/server.py
+
+# 或使用完整 URI
+DB_URI="postgresql+psycopg2://postgres:secret@127.0.0.1:5432/pc28" python app/server.py
+
+# MySQL
+DB_URI="mysql+pymysql://root:secret@127.0.0.1:3306/pc28?charset=utf8mb4" python app/server.py
+```
+
+`scripts/db_setup.py`、`scripts/fetch_update.py`、`scripts/strategy_search.py` 已统一走同一存储层，
+切换后端后这些脚本同样生效。
 
 ## 八、采集器说明
 

@@ -1,15 +1,39 @@
 services:
-  pc28:
-    build: .
-    container_name: pc28-dashboard
-    ports:
-      - "8000:8000"
-    environment:
-      - DB_DIR=/app/data
-      - TZ=Asia/Shanghai
-    volumes:
-      - pc28_data:/app/data
+  postgres:
+    image: postgres:16-alpine
+    container_name: pc28-postgres
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: pc28
+      POSTGRES_USER: pc28
+      POSTGRES_PASSWORD: pc28pass
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pc28 -d pc28"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    image: pc28-app:local
+    container_name: pc28-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_BACKEND: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: pc28
+      DB_USER: pc28
+      DB_PASSWORD: pc28pass
+      TZ: Asia/Shanghai
+    ports:
+      - "8001:8000"
+    command: ["python", "-u", "app/server.py", "--port", "8000"]
 
 volumes:
-  pc28_data:
+  pg_data:

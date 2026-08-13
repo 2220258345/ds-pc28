@@ -44,13 +44,12 @@ PC28 E9 策略回测引擎 (完整版)
   python backtest_e9.py --today      # 今日逐期明细HTML
   python backtest_e9.py --stops      # 止盈止损网格扫描
 """
-import sys, os, sqlite3, argparse
+import os, argparse
 from datetime import datetime
 
 # ============================================================
 # 配置区
 # ============================================================
-DB_PATH = os.path.join(os.environ.get("DB_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "pc28_history.db")
 
 # 梯度 (7级, 2x全额回收, 最大注1280, 资金需求~2560)
 LADDER = [20, 40, 80, 160, 320, 640, 1280]
@@ -113,20 +112,9 @@ def in_maintenance(dt):
 
 def load_draws(filter_date=None):
     """从 SQLite 读取开奖数据, 返回 [(期号, 日期, 时间, c1, c2, c3, 和值), ...] 旧->新。"""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        if filter_date:
-            cur = conn.execute(
-                "SELECT draw_nbr, draw_date, draw_time, c1, c2, c3, draw_num "
-                "FROM draws WHERE draw_date = ? ORDER BY draw_nbr ASC", (filter_date,))
-        else:
-            cur = conn.execute(
-                "SELECT draw_nbr, draw_date, draw_time, c1, c2, c3, draw_num "
-                "FROM draws ORDER BY draw_nbr ASC")
-        rows = [tuple(r) for r in cur.fetchall()]
-    finally:
-        conn.close()
-    return rows
+    from core import db
+
+    return db.load_draws(filter_date)
 
 
 # ============================================================

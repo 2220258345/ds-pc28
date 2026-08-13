@@ -14,12 +14,16 @@ PC28 方法搜索: 探索比 E9 更好的预测/投注方法
   python strategy_search.py
 """
 import os
-import sqlite3
+import sys
 import numpy as np
 import pandas as pd
 from collections import Counter
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pc28_history.db")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "app"))
+
+from core import db
+
 COMMISSION_SUMS = (13, 14)
 
 
@@ -28,14 +32,12 @@ COMMISSION_SUMS = (13, 14)
 # ============================================================
 
 def load():
-    """从 SQLite 读取开奖数据 (旧 -> 新)。"""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        df = pd.read_sql_query(
-            "SELECT draw_nbr, draw_date, draw_time, c1, c2, c3, draw_num "
-            "FROM draws ORDER BY draw_nbr ASC", conn)
-    finally:
-        conn.close()
+    """从存储层读取开奖数据 (旧 -> 新)。"""
+    rows = db.load_draws()
+    df = pd.DataFrame(
+        rows,
+        columns=["draw_nbr", "draw_date", "draw_time", "c1", "c2", "c3", "draw_num"],
+    )
     df["s"] = df["c1"] + df["c2"] + df["c3"]
     df["big"] = (df["s"] >= 14).astype(int)
     df["even"] = (df["s"] % 2 == 0).astype(int)

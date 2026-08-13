@@ -23,8 +23,6 @@ import base64
 import csv
 import io
 import json
-import os
-import sqlite3
 import ssl
 import sys
 import time
@@ -33,12 +31,11 @@ import urllib.error
 import warnings
 from datetime import datetime, timedelta, timezone
 
+from core import db
+
 # 抑制 requests 的 InsecureRequestWarning (pc89.net 不验证证书)
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
-# 项目根目录 (app/collector.py → app/ → 项目根), 与 core/db.py 保持一致
-BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(os.environ.get("DB_DIR", BASE), "pc28_history.db")
 CN_TZ = timezone(timedelta(hours=8))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -46,9 +43,6 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 _CTX = ssl.create_default_context()
 _CTX.check_hostname = False
 _CTX.verify_mode = ssl.CERT_NONE
-
-COLUMNS = ["draw_nbr", "draw_date", "draw_time", "c1", "c2", "c3", "draw_num",
-           "size_type", "parity_type", "combination_type"]
 
 
 def http_get(url, timeout=15):
@@ -367,62 +361,20 @@ def fetch_with_failover(order, verbose=True):
 # 入库
 # ============================================================
 
-def ensure_schema(conn):
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS draws (
-            draw_nbr INTEGER PRIMARY KEY,
-            draw_date TEXT NOT NULL,
-            draw_time TEXT NOT NULL,
-            c1 INTEGER NOT NULL,
-            c2 INTEGER NOT NULL,
-            c3 INTEGER NOT NULL,
-            draw_num INTEGER NOT NULL,
-            size_type TEXT NOT NULL,
-            parity_type TEXT NOT NULL,
-            combination_type TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_draws_date ON draws(draw_date);
-    """)
-
-
 def insert_rows(rows):
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        ensure_schema(conn)
-        before = conn.execute("SELECT COUNT(*) FROM draws").fetchone()[0]
-        old_max = conn.execute("SELECT MAX(draw_nbr) FROM draws").fetchone()[0] or 0
-        conn.executemany(
-            "INSERT OR REPLACE INTO draws (" + ", ".join(COLUMNS) + ") "
-            "VALUES (" + ", ".join("?" for _ in COLUMNS) + ")",
-            [tuple(r[c] for c in COLUMNS) for r in rows],
+    added = db.insert_rows(rows)
+    n, mx_nbr, mx_date = db.get_db_rows()
+    print(f"库内: {n:,} 期  最新期号 {mx_nbr} ({mx_date})  新增 {added}")
+    for r in (rows or [])[:5]:
+        print(
+            f"  最新: {r.get('draw_nbr')} {r.get('draw_date')} {r.get('draw_time')} "
+            f"{r.get('c1')}+{r.get('c2')}+{r.get('c3')}={r.get('draw_num')}"
         )
-        conn.commit()
-        after = conn.execute("SELECT COUNT(*) FROM draws").fetchone()[0]
-        new_max = conn.execute("SELECT MAX(draw_nbr) FROM draws").fetchone()[0]
-        new_rows = conn.execute(
-            "SELECT draw_nbr, draw_date, draw_time, c1, c2, c3, draw_num "
-            "FROM draws WHERE draw_nbr > ? ORDER BY draw_nbr DESC LIMIT 5",
-            (old_max,)).fetchall()
-    finally:
-        conn.close()
-    added = after - before
-    print(f"库内: {before:,} -> {after:,}  (新增 {added})  期号 {old_max} -> {new_max}")
-    for r in new_rows[:5]:
-        print(f"  最新: {r[0]} {r[1]} {r[2]} {r[3]}+{r[4]}+{r[5]}={r[6]}")
     return added
 
 
 def verify():
-    conn = sqlite3.connect(DB_PATH)
-    n = conn.execute("SELECT COUNT(*) FROM draws").fetchone()[0]
-    dup = conn.execute("SELECT COUNT(*) FROM (SELECT draw_nbr FROM draws GROUP BY draw_nbr HAVING COUNT(*)>1)").fetchone()[0]
-    bad = conn.execute("SELECT COUNT(*) FROM draws WHERE c1+c2+c3 != draw_num").fetchone()[0]
-    rng = conn.execute("SELECT MIN(draw_nbr), MAX(draw_nbr), MAX(draw_date) FROM draws").fetchone()
-    conn.close()
-    ok = dup == 0 and bad == 0
-    print(f"校验: 行数 {n:,}  重复 {dup}  和值错误 {bad}  期号 {rng[0]}~{rng[1]}  最新 {rng[2]}")
-    print("结果:", "通过" if ok else "失败")
-    return ok
+    return db.verify()
 
 
 # ============================================================

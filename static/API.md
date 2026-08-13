@@ -379,9 +379,11 @@ evtSource.addEventListener('error', () => console.log('SSE 重连中...'));
 
 ## 部署说明
 
-| 服务 | 端口 | 启动命令 | 职责 |
-|------|------|----------|------|
-| 采集服务器 | 9000 | `python server.py --port 9000` | 后台采集 + 写库 + API |
-| 轻量 API | 9001 | `python api_server.py --port 9001` | 仅读库 + API + SSE |
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| Docker 部署（PostgreSQL） | 宿主机 8001 -> 容器 8000 | `docker compose up -d --build` |
+| 采集服务器 | 默认 8000 | `python app/server.py`，后台采集 + 写库 + API |
+| 轻量 API | 默认 8000 | `python app/api_server.py`，仅读库 + API + SSE |
 
-两个服务共享同一数据库（`pc28_history.db`），可独立部署。轻量 API 不启动采集线程，数据由采集服务器写入。
+存储层支持 SQLite / PostgreSQL / MySQL（详见 README 第七节与「数据库后端切换」）。
+当前部署使用 PostgreSQL，应用看板地址为 http://localhost:8001/ 。

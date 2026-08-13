@@ -138,6 +138,9 @@ def get_trend(limit=100):
 def get_unopened_by_date_range(days=None, start_date=None, end_date=None):
     """按日期范围统计各形态的最大/平均间隔, 并返回最大间隔的期号 (用于跳转查看历史数据)。
 
+    间隔 = (下一期时间戳 - 上一期时间戳) / 210秒
+    即使数据库有缺失期, 也按真实时间计算 (避免 138 跨日假象)。
+
     参数:
       days: 最近 N 天 (从最新一天向前推); 与 start_date/end_date 互斥
       start_date / end_date: 自定义日期范围 'YYYY-MM-DD'
@@ -152,6 +155,12 @@ def get_unopened_by_date_range(days=None, start_date=None, end_date=None):
       ]
     }
     """
+    from datetime import datetime
+
+    def to_ts(date_str, time_str):
+        # 把 "YYYY-MM-DD HH:MM:SS" 转成 unix 时间戳
+        return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S").timestamp()
+
     conn = _conn()
     try:
         # 计算日期范围
@@ -185,42 +194,51 @@ def get_unopened_by_date_range(days=None, start_date=None, end_date=None):
             return (19 * 60 <= minutes < 19 * 60 + 33) or (20 * 60 <= minutes < 20 * 60 + 33)
 
         # 收集每个形态的间隔 + 最大间隔对应的期号区间
+        # 仅当数据库里 nbr1+1, nbr1+2, ..., nbr2-1 全部存在 (期号连续) 时,
+        # 才把 nbr2 - nbr1 - 1 计入"连续没出". 缺期 (nbr 跳号) 时跳过.
         intervals = {t: [] for t in
                      ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]}
         max_info = {t: {"max": 0, "start": 0, "end": 0,
                          "date": "", "time": ""}
                     for t in intervals.keys()}
-        last_seen = {}  # type -> (nbr, date, time)
+        last_seen = {}  # type -> {"nbr": nbr, "rows": 距上一同形态的行数}
 
+        row_count = 0
         for r in rows:
             nbr, date, time, sz, pa, sm = r
+            row_count += 1
             if is_maint(date, time):
                 last_seen = {}
                 continue
             # 单形态
             for t in [sz, pa]:
                 if t in last_seen:
-                    prev_nbr = last_seen[t]
-                    gap = nbr - prev_nbr
-                    intervals[t].append(gap)
-                    if gap > max_info[t]["max"]:
-                        max_info[t] = {
-                            "max": gap, "start": prev_nbr, "end": nbr,
-                            "date": date, "time": time
-                        }
-                last_seen[t] = nbr
+                    prev_nbr = last_seen[t]["nbr"]
+                    rows_between = row_count - last_seen[t]["rows"] - 1
+                    nbr_diff = nbr - prev_nbr - 1
+                    # 仅在期号连续 (数据库不缺期) 时才计入
+                    if rows_between == nbr_diff and nbr_diff > 0:
+                        intervals[t].append(nbr_diff)
+                        if nbr_diff > max_info[t]["max"]:
+                            max_info[t] = {
+                                "max": nbr_diff, "start": prev_nbr, "end": nbr,
+                                "date": date, "time": time
+                            }
+                last_seen[t] = {"nbr": nbr, "rows": row_count}
             # 组合
             combo = f"{sz}{pa}"
             if combo in last_seen:
-                prev_nbr = last_seen[combo]
-                gap = nbr - prev_nbr
-                intervals[combo].append(gap)
-                if gap > max_info[combo]["max"]:
-                    max_info[combo] = {
-                        "max": gap, "start": prev_nbr, "end": nbr,
-                        "date": date, "time": time
-                    }
-            last_seen[combo] = nbr
+                prev_nbr = last_seen[combo]["nbr"]
+                rows_between = row_count - last_seen[combo]["rows"] - 1
+                nbr_diff = nbr - prev_nbr - 1
+                if rows_between == nbr_diff and nbr_diff > 0:
+                    intervals[combo].append(nbr_diff)
+                    if nbr_diff > max_info[combo]["max"]:
+                        max_info[combo] = {
+                            "max": nbr_diff, "start": prev_nbr, "end": nbr,
+                            "date": date, "time": time
+                        }
+            last_seen[combo] = {"nbr": nbr, "rows": row_count}
 
         items = []
         for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]:

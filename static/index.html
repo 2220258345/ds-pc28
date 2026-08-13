@@ -469,6 +469,26 @@ td .mini-ball {
 }
 .unopened-card .type-count.hot { color: var(--red); }
 .unopened-card .type-desc { font-size: var(--text-xs); color: var(--ink-3); margin-top: var(--space-2); }
+.unopened-card .type-status {
+  display: inline-block; margin-left: var(--space-2); padding: 1px 8px;
+  font-size: 11px; font-weight: 600; color: #fff; border-radius: 8px;
+  vertical-align: middle; letter-spacing: 0.02em;
+}
+.unopened-card .type-meta {
+  font-size: var(--text-xs); color: var(--ink-3); margin-top: var(--space-2);
+  display: flex; justify-content: center; gap: var(--space-3);
+}
+.unopened-card .type-meta b { color: var(--ink-2); font-family: "JetBrains Mono", monospace; font-weight: 600; }
+.unopened-card .type-bar {
+  margin-top: var(--space-3); height: 4px; background: var(--rule);
+  border-radius: 2px; overflow: hidden;
+}
+.unopened-card .type-bar-fill {
+  height: 100%; border-radius: 2px; transition: width 0.4s ease;
+}
+.unopened-card.hot { border-color: #e8763a; background: linear-gradient(180deg, rgba(232,118,58,0.04), var(--paper-2)); }
+.unopened-card.extreme { border-color: var(--red); background: linear-gradient(180deg, rgba(229,72,77,0.06), var(--paper-2)); animation: uc-pulse 2s ease-in-out infinite; }
+@keyframes uc-pulse { 0%,100%{box-shadow: var(--shadow-xs)} 50%{box-shadow: 0 0 0 3px rgba(229,72,77,0.15)} }
 
 /* ========== Sum Unopened Grid ========== */
 .sum-unopened-wrap {
@@ -1322,24 +1342,31 @@ async function loadTrend(limit) {
   }
 }
 
-// ========== 未开期数 ==========
+// ========== 未开期数 (增强版) ==========
+const STATUS_LABEL = { normal: '正常', warm: '偏热', hot: '偏冷', extreme: '极冷' };
+const STATUS_COLOR = { normal: '#30a46c', warm: '#e8a317', hot: '#e8763a', extreme: '#e5484d' };
+
 async function loadUnopened() {
   try {
-    const resp = await fetch('/api/unopened');
+    const resp = await fetch('/api/unopened-v2');
     const data = await resp.json();
+    const items = data.items || [];
+    const byType = {};
+    items.forEach(it => byType[it.type] = it);
 
-    // Strip
-    const types = ['小单', '小双', '大单', '大双'];
-    document.getElementById('unopenedStrip').innerHTML = types.map(t => {
-      const count = data[t] || 0;
+    // Strip - 4种组合
+    const combos = ['小单', '小双', '大单', '大双'];
+    document.getElementById('unopenedStrip').innerHTML = combos.map(t => {
+      const it = byType[t] || { current: 0, status: 'normal' };
+      const c = it.current;
       return `<div class="unopened-item">
         <span class="unopened-type">${t}</span>
-        <span class="unopened-count ${count >= 10 ? 'hot' : ''}">${count}</span>
+        <span class="unopened-count ${c >= 10 ? 'hot' : ''}" style="color:${STATUS_COLOR[it.status]}">${c}</span>
         <span class="unopened-type">期未开</span>
       </div>`;
     }).join('');
 
-    // Grid
+    // Grid - 8种形态, 每个卡片显示当前/平均/最大/状态
     const allTypes = [
       { key: '大', desc: '和值 ≥ 14' },
       { key: '小', desc: '和值 < 14' },
@@ -1351,11 +1378,18 @@ async function loadUnopened() {
       { key: '小双', desc: '小 + 双' },
     ];
     document.getElementById('unopenedGrid').innerHTML = allTypes.map(t => {
-      const count = data[t.key] || 0;
-      return `<div class="unopened-card">
-        <div class="type-label">${t.key}</div>
-        <div class="type-count ${count >= 10 ? 'hot' : ''}">${count}</div>
+      const it = byType[t.key] || { current: 0, avg: 0, max: 0, status: 'normal', ratio: 0 };
+      const cur = it.current;
+      const statusColor = STATUS_COLOR[it.status] || '#545870';
+      const statusLabel = STATUS_LABEL[it.status] || '正常';
+      return `<div class="unopened-card ${it.status === 'extreme' ? 'extreme' : it.status === 'hot' ? 'hot' : ''}">
+        <div class="type-label">${t.key}<span class="type-status" style="background:${statusColor}">${statusLabel}</span></div>
+        <div class="type-count" style="color:${statusColor}">${cur}</div>
         <div class="type-desc">${t.desc}</div>
+        <div class="type-meta">平均 <b>${it.avg}</b> · 最大 <b>${it.max}</b></div>
+        <div class="type-bar">
+          <div class="type-bar-fill" style="width:${Math.min(100, (cur / Math.max(it.max, 1)) * 100)}%; background:${statusColor}"></div>
+        </div>
       </div>`;
     }).join('');
   } catch (e) {

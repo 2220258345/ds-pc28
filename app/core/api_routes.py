@@ -67,6 +67,8 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 self._json(200, json.dumps(db.get_trend(limit), ensure_ascii=False))
             elif path == "/api/unopened":
                 self._json(200, json.dumps(db.get_unopened_stats(), ensure_ascii=False))
+            elif path == "/api/unopened-v2":
+                self._json(200, json.dumps(db.get_unopened_stats_v2(), ensure_ascii=False))
             elif path == "/api/sum-unopened":
                 self._json(200, json.dumps(db.get_sum_unopened_stats(), ensure_ascii=False))
             elif path == "/api/draws":

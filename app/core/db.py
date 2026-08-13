@@ -145,6 +145,107 @@ def get_unopened_stats():
         conn.close()
 
 
+def get_unopened_stats_v2():
+    """增强版未开期数: 包含当前未开、历史最大、平均、中位数、P95/P99、状态评估。
+
+    返回结构:
+      {
+        "latest_nbr": int,
+        "items": [
+          {"type": "大", "current": 5, "max": 138, "avg": 2.05, "med": 1,
+           "p95": 5, "p99": 8, "status": "normal|warm|hot|extreme",
+           "ratio": 0.62},  # 当前/平均, 越大越异常
+          ...
+        ]
+      }
+    """
+    conn = _conn()
+    try:
+        latest = conn.execute("SELECT MAX(draw_nbr) FROM draws").fetchone()[0] or 0
+        # 排除维护时段 (19:00-19:33 / 20:00-20:33) 的连续跨日号段
+        rows = conn.execute(
+            "SELECT draw_nbr, draw_date, draw_time, size_type, parity_type, draw_num "
+            "FROM draws ORDER BY draw_nbr ASC"
+        ).fetchall()
+        if not rows:
+            return {"latest_nbr": latest, "items": []}
+
+        # 维护时段判定 (北京时间, 与 time_sync.py 一致)
+        def is_maint(date_str, time_str):
+            hm = time_str.split(":")
+            minutes = int(hm[0]) * 60 + int(hm[1])
+            return (19 * 60 <= minutes < 19 * 60 + 33) or (20 * 60 <= minutes < 20 * 60 + 33)
+
+        # 收集历史间隔 (维护后重置基准)
+        gaps = {"大": [], "小": [], "单": [], "双": [],
+                "大单": [], "大双": [], "小单": [], "小双": []}
+        last_seen = {}
+        for r in rows:
+            nbr, date, time, sz, pa, sm = r
+            if is_maint(date, time):
+                # 维护时段: 重置所有 last_seen
+                last_seen = {}
+                continue
+            for t in [sz, pa]:
+                if t in last_seen:
+                    gaps[t].append(nbr - last_seen[t])
+                last_seen[t] = nbr
+            combo = f"{sz}{pa}"
+            if combo in last_seen:
+                gaps[combo].append(nbr - last_seen[combo])
+            last_seen[combo] = nbr
+
+        # 计算当前未开期数
+        def cur_unopened(t):
+            sz, pa = t[0], t[1] if len(t) > 1 else None
+            if pa is None:
+                row = conn.execute(
+                    "SELECT draw_nbr FROM draws WHERE size_type=? OR parity_type=? "
+                    "ORDER BY draw_nbr DESC LIMIT 1", (t, t)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT draw_nbr FROM draws WHERE size_type=? AND parity_type=? "
+                    "ORDER BY draw_nbr DESC LIMIT 1", (sz, pa)
+                ).fetchone()
+            return latest - row[0] if row else 0
+
+        # 统计
+        items = []
+        for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]:
+            g = sorted(gaps[t])
+            n = len(g)
+            current = cur_unopened(t)
+            if n == 0:
+                items.append({"type": t, "current": current, "max": 0, "avg": 0,
+                              "med": 0, "p95": 0, "p99": 0, "ratio": 0, "status": "normal"})
+                continue
+            mx = max(g)
+            avg = sum(g) / n
+            med = g[n // 2]
+            p95 = g[int(n * 0.95)]
+            p99 = g[min(n - 1, int(n * 0.99))]
+            ratio = current / avg if avg > 0 else 0
+            # 状态评估: 当前/平均
+            if ratio >= 5:
+                status = "extreme"  # 极冷
+            elif ratio >= 3:
+                status = "hot"      # 偏冷
+            elif ratio >= 1.5:
+                status = "warm"     # 偏热
+            else:
+                status = "normal"   # 正常
+            items.append({
+                "type": t, "current": current, "max": mx,
+                "avg": round(avg, 2), "med": med,
+                "p95": p95, "p99": p99,
+                "ratio": round(ratio, 2), "status": status
+            })
+        return {"latest_nbr": latest, "items": items}
+    finally:
+        conn.close()
+
+
 def get_sum_unopened_stats():
     """计算每个和值 (0-27) 的未出期数 + 赔率, 按赔率对分组返回。"""
     conn = _conn()

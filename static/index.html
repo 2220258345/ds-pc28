@@ -517,6 +517,7 @@ td .mini-ball {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
 }
+.range-group { display: flex; gap: var(--space-1); }
 .range-sep { color: var(--ink-3); font-size: var(--text-xs); }
 .range-btn {
   padding: 4px var(--space-3); border-radius: var(--radius);
@@ -527,6 +528,9 @@ td .mini-ball {
   cursor: pointer; transition: all 0.15s ease;
 }
 .range-btn:hover { color: var(--accent); border-color: var(--accent); }
+.range-btn.active {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
 .range-input {
   padding: 3px var(--space-2); border: 1px solid var(--rule);
   border-radius: var(--radius);
@@ -539,34 +543,6 @@ td .mini-ball {
   font-size: var(--text-xs); color: var(--ink-3); margin-left: var(--space-2);
   font-family: "JetBrains Mono", monospace;
 }
-.hourly-picker {
-  display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--space-2);
-  margin-bottom: var(--space-5);
-}
-.hourly-btn {
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  color: var(--ink-2);
-  font-family: "JetBrains Mono", monospace;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  padding: var(--space-2) 0;
-  border-radius: var(--radius);
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.2s ease;
-  font-variant-numeric: tabular-nums;
-}
-.hourly-btn:hover { border-color: var(--accent); color: var(--accent); }
-.hourly-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-  box-shadow: 0 2px 6px rgba(67,97,238,0.3);
-}
-.hourly-btn.maint { color: var(--ink-3); border-style: dashed; opacity: 0.5; }
-.hourly-btn.current::after { content: '●'; margin-left: 4px; color: var(--green); }
-.hourly-btn.active.current::after { color: #fff; }
 .hourly-table-wrap { overflow-x: auto; }
 .hourly-table {
   width: 100%; border-collapse: collapse;
@@ -737,7 +713,7 @@ tr.row-flash { animation: row-flash-anim 2s ease-out; }
   .badge { width: 36px; height: 36px; font-size: var(--text-base); }
   .unopened-grid { grid-template-columns: repeat(2, 1fr); }
   .sum-unopened-grid { grid-template-columns: repeat(4, 1fr); }
-  .hourly-picker { grid-template-columns: repeat(6, 1fr); }
+
   .hourly-table { font-size: 12px; }
   .hourly-table th, .hourly-table td { padding: 6px 4px; }
   .unopened-strip { flex-wrap: wrap; }
@@ -904,18 +880,25 @@ tr.row-flash { animation: row-flash-anim 2s ease-out; }
 
       <div class="hourly-wrap">
         <div class="hourly-header">
-          <h3>按时段查看最大未开</h3>
+          <h3>查看最大未开 (按日期范围)</h3>
           <span class="hourly-hint">点击行中的期号跳转到历史数据</span>
         </div>
         <div class="hourly-range">
           <span class="range-sep">时间范围</span>
+          <div class="range-group" id="rangeGroup">
+            <button class="range-btn" data-days="1">1天</button>
+            <button class="range-btn" data-days="3">3天</button>
+            <button class="range-btn active" data-days="7">7天</button>
+            <button class="range-btn" data-days="30">30天</button>
+            <button class="range-btn" data-days="0">全部</button>
+          </div>
+          <span class="range-sep">|</span>
           <input type="date" id="startDate" class="range-input">
           <span class="range-sep">至</span>
           <input type="date" id="endDate" class="range-input">
           <button id="customDateBtn" class="range-btn">确定</button>
           <span class="range-label" id="rangeLabel"></span>
         </div>
-        <div class="hourly-picker" id="hourlyPicker"></div>
         <div class="hourly-table-wrap">
           <table class="hourly-table" id="hourlyTable">
             <thead>
@@ -929,7 +912,7 @@ tr.row-flash { animation: row-flash-anim 2s ease-out; }
               </tr>
             </thead>
             <tbody id="hourlyTableBody">
-              <tr><td colspan="6" class="loading">请选择时段</td></tr>
+              <tr><td colspan="6" class="loading">加载中…</td></tr>
             </tbody>
           </table>
         </div>
@@ -1542,46 +1525,38 @@ async function loadUnopened() {
   }
 }
 
-// ========== 按时段查看最大未开 ==========
-let hourlyCurrentHour = -1;
+// ========== 按日期范围查看最大未开 ==========
+let currentDays = 7;  // 默认最近7天
 let currentStartDate = null;
 let currentEndDate = null;
 
 function initHourlyPicker() {
-  const picker = document.getElementById('hourlyPicker');
-  if (!picker || picker.dataset.initialized) return;
-  picker.dataset.initialized = '1';
-  // 维护时段 (19, 20 时)
-  const maintHours = [19, 20];
-  // 推断当前小时 (从后端 status 接口)
-  const nowHour = new Date().getHours();
-  const btns = [];
-  for (let h = 0; h < 24; h++) {
-    const btn = document.createElement('button');
-    btn.className = 'hourly-btn';
-    btn.textContent = String(h).padStart(2, '0');
-    btn.dataset.hour = h;
-    if (maintHours.includes(h)) btn.classList.add('maint');
-    if (h === nowHour) btn.classList.add('current');
-    btn.onclick = () => loadHourly(h);
-    picker.appendChild(btn);
-    btns.push(btn);
-  }
-  // 初始化日期范围: 默认最近 7 天
+  if (initHourlyPicker._done) return;
+  initHourlyPicker._done = true;
+  // 初始化日期范围控件
   initDateRange();
-  // 默认选择 12 时
-  loadHourly(12);
+  // 默认加载
+  loadUnopened();
 }
 
 function initDateRange() {
-  // 默认填充最近 7 天的日期
-  const today = new Date();
-  const end = today.toISOString().slice(0, 10);
-  const start = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  document.getElementById('startDate').value = start;
-  document.getElementById('endDate').value = end;
-  currentStartDate = start;
-  currentEndDate = end;
+  // 快捷按钮点击
+  document.querySelectorAll('#rangeGroup .range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const days = parseInt(btn.dataset.days, 10);
+      currentDays = days > 0 ? days : null;
+      currentStartDate = null;
+      currentEndDate = null;
+      document.querySelectorAll('#rangeGroup .range-btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+      });
+      // 清除自定义日期
+      document.getElementById('startDate').value = '';
+      document.getElementById('endDate').value = '';
+      updateRangeLabel();
+      loadUnopened();
+    });
+  });
   // 自定义日期确定
   document.getElementById('customDateBtn').addEventListener('click', () => {
     const s = document.getElementById('startDate').value;
@@ -1594,10 +1569,12 @@ function initDateRange() {
       alert('起始日期不能大于结束日期');
       return;
     }
+    currentDays = null;
     currentStartDate = s;
     currentEndDate = e;
+    document.querySelectorAll('#rangeGroup .range-btn').forEach(b => b.classList.remove('active'));
     updateRangeLabel();
-    if (hourlyCurrentHour >= 0) loadHourly(hourlyCurrentHour);
+    loadUnopened();
   });
   updateRangeLabel();
 }
@@ -1607,28 +1584,30 @@ function updateRangeLabel() {
   if (!label) return;
   if (currentStartDate && currentEndDate) {
     label.textContent = `${currentStartDate} ~ ${currentEndDate}`;
+  } else if (currentDays) {
+    label.textContent = `最近 ${currentDays} 天`;
   } else {
-    label.textContent = '未选择';
+    label.textContent = '全部历史';
   }
 }
 
-async function loadHourly(hour) {
-  hourlyCurrentHour = hour;
-  // 更新按钮高亮
-  document.querySelectorAll('.hourly-btn').forEach(b => {
-    b.classList.toggle('active', Number(b.dataset.hour) === hour);
-  });
+async function loadUnopened() {
   const tbody = document.getElementById('hourlyTableBody');
   tbody.innerHTML = `<tr><td colspan="6" class="loading">加载中…</td></tr>`;
   try {
-    let url = `/api/unopened-hourly?hour=${hour}`;
+    let url = `/api/unopened-hourly`;
+    const params = [];
     if (currentStartDate && currentEndDate) {
-      url += `&start_date=${encodeURIComponent(currentStartDate)}&end_date=${encodeURIComponent(currentEndDate)}`;
+      params.push(`start_date=${encodeURIComponent(currentStartDate)}`);
+      params.push(`end_date=${encodeURIComponent(currentEndDate)}`);
+    } else if (currentDays) {
+      params.push(`days=${currentDays}`);
     }
+    if (params.length) url += '?' + params.join('&');
     const resp = await fetch(url);
     const data = await resp.json();
     if (!data.items || !data.items.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="h-empty">该时段无数据</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="h-empty">该范围无数据</td></tr>`;
       return;
     }
     tbody.innerHTML = data.items.map(it => {

@@ -135,16 +135,15 @@ def get_trend(limit=100):
         conn.close()
 
 
-def get_unopened_by_hour(hour, days=None, start_date=None, end_date=None):
-    """按小时统计各形态的最大/平均间隔, 并返回最大间隔的期号 (用于跳转查看历史数据)。
+def get_unopened_by_date_range(days=None, start_date=None, end_date=None):
+    """按日期范围统计各形态的最大/平均间隔, 并返回最大间隔的期号 (用于跳转查看历史数据)。
 
     参数:
-      hour: 0-23 时段
       days: 最近 N 天 (从最新一天向前推); 与 start_date/end_date 互斥
       start_date / end_date: 自定义日期范围 'YYYY-MM-DD'
 
     返回: {
-      "hour": 12, "days": 7, "start_date": "2026-08-07", "end_date": "2026-08-13",
+      "days": 7, "start_date": "2026-08-07", "end_date": "2026-08-13",
       "items": [
         {"type": "大", "count": 365, "avg": 4.0, "max": 41,
          "max_start": 3465000, "max_end": 3465040,
@@ -153,8 +152,6 @@ def get_unopened_by_hour(hour, days=None, start_date=None, end_date=None):
       ]
     }
     """
-    if hour < 0 or hour > 23:
-        hour = 0
     conn = _conn()
     try:
         # 计算日期范围
@@ -162,7 +159,7 @@ def get_unopened_by_hour(hour, days=None, start_date=None, end_date=None):
             "SELECT draw_date FROM draws ORDER BY draw_nbr DESC LIMIT 1"
         ).fetchone()
         if not latest_row:
-            return {"hour": hour, "days": 0, "start_date": "", "end_date": "", "items": []}
+            return {"days": 0, "start_date": "", "end_date": "", "items": []}
 
         if start_date is None or end_date is None:
             end_date = latest_row[0]
@@ -187,53 +184,43 @@ def get_unopened_by_hour(hour, days=None, start_date=None, end_date=None):
             minutes = int(hm[0]) * 60 + int(hm[1])
             return (19 * 60 <= minutes < 19 * 60 + 33) or (20 * 60 <= minutes < 20 * 60 + 33)
 
-        # 收集每个形态在指定小时出现的所有间隔 + 最大间隔对应的期号区间
+        # 收集每个形态的间隔 + 最大间隔对应的期号区间
         intervals = {t: [] for t in
                      ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]}
         max_info = {t: {"max": 0, "start": 0, "end": 0,
                          "date": "", "time": ""}
                     for t in intervals.keys()}
         last_seen = {}  # type -> (nbr, date, time)
-        prev_date = None
 
         for r in rows:
             nbr, date, time, sz, pa, sm = r
-            # 跨日期: 重置 last_seen, 避免把不同日期的间隔算进来
-            if prev_date is not None and date != prev_date:
-                last_seen = {}
-            prev_date = date
-
-            h = int(time.split(":")[0])
             if is_maint(date, time):
                 last_seen = {}
                 continue
             # 单形态
             for t in [sz, pa]:
                 if t in last_seen:
-                    prev_nbr, prev_date_seen, prev_time = last_seen[t]
+                    prev_nbr = last_seen[t]
                     gap = nbr - prev_nbr
-                    # 只统计"目标小时"出现的间隔 (即本次出现在 h=hour 时)
-                    if h == hour:
-                        intervals[t].append(gap)
-                        if gap > max_info[t]["max"]:
-                            max_info[t] = {
-                                "max": gap, "start": prev_nbr, "end": nbr,
-                                "date": date, "time": time
-                            }
-                last_seen[t] = (nbr, date, time)
-            # 组合
-            combo = f"{sz}{pa}"
-            if combo in last_seen:
-                prev_nbr, prev_date_seen, prev_time = last_seen[combo]
-                gap = nbr - prev_nbr
-                if h == hour:
-                    intervals[combo].append(gap)
-                    if gap > max_info[combo]["max"]:
-                        max_info[combo] = {
+                    intervals[t].append(gap)
+                    if gap > max_info[t]["max"]:
+                        max_info[t] = {
                             "max": gap, "start": prev_nbr, "end": nbr,
                             "date": date, "time": time
                         }
-            last_seen[combo] = (nbr, date, time)
+                last_seen[t] = nbr
+            # 组合
+            combo = f"{sz}{pa}"
+            if combo in last_seen:
+                prev_nbr = last_seen[combo]
+                gap = nbr - prev_nbr
+                intervals[combo].append(gap)
+                if gap > max_info[combo]["max"]:
+                    max_info[combo] = {
+                        "max": gap, "start": prev_nbr, "end": nbr,
+                        "date": date, "time": time
+                    }
+            last_seen[combo] = nbr
 
         items = []
         for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]:
@@ -249,7 +236,7 @@ def get_unopened_by_hour(hour, days=None, start_date=None, end_date=None):
                 "max_date": mi["date"],
                 "max_time": mi["time"]
             })
-        return {"hour": hour, "days": days or 0,
+        return {"days": days or 0,
                 "start_date": start_date, "end_date": end_date, "items": items}
     finally:
         conn.close()

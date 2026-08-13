@@ -586,6 +586,119 @@ tr.row-range-end {
   box-shadow: inset 4px 0 0 #e5484d;
 }
 
+/* ========== 区间数据弹窗 (独立显示, 避免公用列表翻页) ========== */
+.range-modal-mask {
+  position: fixed; inset: 0;
+  background: rgba(20,30,60,0.45);
+  backdrop-filter: blur(2px);
+  z-index: 1000;
+  display: none; align-items: center; justify-content: center;
+  padding: var(--space-5);
+  animation: range-mask-in 0.18s ease-out;
+}
+.range-modal-mask.open { display: flex; }
+@keyframes range-mask-in { from { opacity: 0; } to { opacity: 1; } }
+.range-modal {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px -10px rgba(20,30,60,0.30);
+  width: 100%; max-width: 920px; max-height: 85vh;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: range-modal-in 0.22s ease-out;
+}
+@keyframes range-modal-in { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.range-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+.range-modal-title {
+  font-size: var(--text-lg); font-weight: 600; color: var(--ink);
+  font-family: "DM Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  letter-spacing: -0.01em;
+}
+.range-modal-title .rm-tag {
+  display: inline-block; margin-left: var(--space-3);
+  font-family: "JetBrains Mono", monospace; font-size: var(--text-sm);
+  color: var(--accent); font-weight: 600;
+  padding: 2px var(--space-2); border-radius: var(--radius);
+  background: rgba(67,97,238,0.10);
+}
+.range-modal-close {
+  background: transparent; border: 0; cursor: pointer;
+  font-size: 22px; line-height: 1; color: var(--ink-3);
+  padding: var(--space-1) var(--space-2); border-radius: var(--radius);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.range-modal-close:hover { background: var(--panel-2); color: var(--ink); }
+.range-modal-meta {
+  display: flex; flex-wrap: wrap; gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--text-sm); color: var(--ink-2);
+  font-family: "JetBrains Mono", monospace;
+  flex-shrink: 0;
+}
+.range-modal-meta .rm-meta-item { display: flex; align-items: center; gap: 6px; }
+.range-modal-meta .rm-meta-label { color: var(--ink-3); }
+.range-modal-meta .rm-meta-val { color: var(--ink); font-weight: 600; }
+.range-modal-meta .rm-meta-val.green { color: var(--green); }
+.range-modal-meta .rm-meta-val.red { color: var(--red); }
+.range-modal-meta .rm-meta-val.accent { color: var(--accent); }
+.range-modal-body {
+  flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-6);
+  -webkit-overflow-scrolling: touch;
+}
+.range-modal-loading {
+  text-align: center; padding: var(--space-8); color: var(--ink-3);
+  font-family: "JetBrains Mono", monospace; font-size: var(--text-base);
+}
+.range-modal-loading::after {
+  content: ''; display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--rule); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+  margin-left: 8px; vertical-align: middle;
+}
+.range-table {
+  width: 100%; border-collapse: collapse;
+  font-family: "JetBrains Mono", monospace; font-size: var(--text-sm);
+}
+.range-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel-2); color: var(--ink-2); font-weight: 600;
+  padding: var(--space-2) var(--space-3); text-align: left;
+  border-bottom: 1px solid var(--rule);
+  letter-spacing: 0.02em;
+  font-family: "DM Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.range-table tbody td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule-2);
+  color: var(--ink-2);
+}
+.range-table tbody tr:hover { background: var(--panel-2); }
+.range-table .rn-period { color: var(--accent); font-weight: 600; }
+.range-table .rn-sum { font-weight: 700; }
+.range-table .rn-sum.s-big { color: #e60012; }
+.range-table .rn-sum.s-small { color: var(--accent); }
+.range-table .rn-balls { display: inline-flex; gap: 3px; }
+.range-table .rn-ball {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  font-size: 12px; font-weight: 700; color: #fff;
+  font-family: "JetBrains Mono", monospace;
+}
+.range-table .rn-ball.b-red { background: #ff0000; }
+.range-table .rn-ball.b-blue { background: #0000ff; }
+.range-table .rn-ball.b-green { background: #008000; }
+.range-table tr.row-range-start { background: rgba(48,164,108,0.18) !important; }
+.range-table tr.row-range-end { background: rgba(229,72,77,0.18) !important; }
+.range-table tr.row-range-mid { background: rgba(67,97,238,0.05) !important; }
+
 /* ========== Sum Unopened Grid ========== */
 .sum-unopened-wrap {
   border: 1px solid var(--rule);
@@ -1625,7 +1738,7 @@ async function loadDateRangeStats() {
     tbody.innerHTML = data.items.map(it => {
       const hasMax = it.max > 0;
       const periodCell = hasMax
-        ? `<a class="h-period" data-start="${it.max_start}" data-end="${it.max_end}" data-date="${it.max_date}" title="点击跳转到历史数据并标出区间">${it.max_start} → ${it.max_end}</a>`
+        ? `<a class="h-period" data-start="${it.max_start}" data-end="${it.max_end}" data-date="${it.max_date}" data-type="${it.type}" title="点击查看区间数据">${it.max_start} → ${it.max_end}</a>`
         : `<span class="h-empty">—</span>`;
       const dateCell = hasMax ? `${it.max_date} ${it.max_time.slice(0,5)}` : '<span class="h-empty">—</span>';
       return `<tr>
@@ -1637,19 +1750,138 @@ async function loadDateRangeStats() {
         <td>${periodCell}</td>
       </tr>`;
     }).join('');
-    // 绑定期号点击跳转
+    // 绑定期号点击 -> 弹窗独立显示区间 (避免公用列表翻页)
     tbody.querySelectorAll('.h-period').forEach(a => {
       a.onclick = (e) => {
         e.preventDefault();
         const start = Number(a.dataset.start);
         const end = Number(a.dataset.end);
-        jumpToHistory(end, { rangeStart: start, rangeEnd: end });
+        const date = a.dataset.date || '';
+        const type = a.dataset.type || '';
+        showRangeModal(start, end, type, date);
       };
     });
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="6" class="h-empty">加载失败: ${e.message}</td></tr>`;
   }
 }
+
+// 红/蓝/绿波归属
+function _waveOf(n) {
+  if ([1,2,7,8,12,13,18,19,23,24].includes(n)) return 'red';
+  if ([3,4,9,10,14,15,20,25,26].includes(n)) return 'blue';
+  return 'green';
+}
+
+// 区间数据弹窗 (独立显示, 不依赖公用历史数据列表)
+async function showRangeModal(start, end, typeName, date) {
+  const mask = document.getElementById('rangeModalMask');
+  const tag = document.getElementById('rangeModalTag');
+  const meta = document.getElementById('rangeModalMeta');
+  const body = document.getElementById('rangeModalBody');
+  if (!mask) return;
+
+  // 重置并显示
+  tag.textContent = typeName || '';
+  meta.innerHTML = '';
+  body.innerHTML = '<div class="range-modal-loading">加载中</div>';
+  mask.classList.add('open');
+
+  try {
+    const resp = await fetch(`/api/history/range?start=${start}&end=${end}`);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const rows = await resp.json();
+    if (!rows.length) {
+      body.innerHTML = '<div class="range-modal-loading" style="color:var(--ink-3)">该范围无数据</div>';
+      return;
+    }
+
+    // 统计: 该区间内出现目标形态的期号 (用于交叉验证最大间隔)
+    const hitRows = rows.filter(r => {
+      // 兼容多种形态名: 大/小/单/双/大单/大双/小单/小双/极大/极小
+      return r.size_type === typeName || r.parity_type === typeName || r.combination_type === typeName;
+    });
+    const hits = hitRows.length;
+    const span = end - start;
+    const consecutive = span;  // 连续没出 = 区间长度
+    const startRow = rows[0];
+    const endRow = rows[rows.length - 1];
+    const missingCount = span + 1 - rows.length;
+
+    meta.innerHTML = `
+      <div class="rm-meta-item"><span class="rm-meta-label">区间:</span><span class="rm-meta-val accent">${start} → ${end}</span></div>
+      <div class="rm-meta-item"><span class="rm-meta-label">期号跨度:</span><span class="rm-meta-val">${span + 1} 期</span></div>
+      <div class="rm-meta-item"><span class="rm-meta-label">起:</span><span class="rm-meta-val green">${startRow.draw_nbr} (${startRow.draw_date} ${(startRow.draw_time || '').slice(0,5)})</span></div>
+      <div class="rm-meta-item"><span class="rm-meta-label">止:</span><span class="rm-meta-val red">${endRow.draw_nbr} (${endRow.draw_date} ${(endRow.draw_time || '').slice(0,5)})</span></div>
+      <div class="rm-meta-item"><span class="rm-meta-label">数据库记录:</span><span class="rm-meta-val">${rows.length} 条${missingCount > 0 ? ` (缺 ${missingCount} 期)` : ''}</span></div>
+      <div class="rm-meta-item"><span class="rm-meta-label">区间内「${typeName}」:</span><span class="rm-meta-val ${hits > 0 ? 'green' : 'red'}">${hits} 次</span></div>
+    `;
+
+    body.innerHTML = `
+      <table class="range-table">
+        <thead>
+          <tr>
+            <th>期号</th>
+            <th>日期</th>
+            <th>时间</th>
+            <th>号码</th>
+            <th>和值</th>
+            <th>大小</th>
+            <th>单双</th>
+            <th>组合</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => {
+            const isStart = r.draw_nbr === start;
+            const isEnd = r.draw_nbr === end;
+            const cls = isStart ? 'row-range-start' : isEnd ? 'row-range-end' : '';
+            const sum = r.draw_num;
+            const sumClass = sum >= 14 ? 's-big' : 's-small';
+            const hitMark = (r.size_type === typeName || r.parity_type === typeName || r.combination_type === typeName)
+              ? ' <span style="color:var(--green);font-weight:700">★</span>' : '';
+            return `<tr class="${cls}">
+              <td class="rn-period">${r.draw_nbr}</td>
+              <td>${r.draw_date}</td>
+              <td>${(r.draw_time || '').slice(0,8)}</td>
+              <td><span class="rn-balls">
+                <span class="rn-ball b-${_waveOf(r.c1)}">${r.c1}</span>
+                <span class="rn-ball b-${_waveOf(r.c2)}">${r.c2}</span>
+                <span class="rn-ball b-${_waveOf(r.c3)}">${r.c3}</span>
+              </span></td>
+              <td class="rn-sum ${sumClass}">${sum}</td>
+              <td>${r.size_type || ''}</td>
+              <td>${r.parity_type || ''}</td>
+              <td>${r.combination_type || ''}${hitMark}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    body.innerHTML = `<div class="range-modal-loading" style="color:var(--red)">加载失败: ${err.message}</div>`;
+  }
+}
+
+// 关闭弹窗
+function closeRangeModal() {
+  const mask = document.getElementById('rangeModalMask');
+  if (mask) mask.classList.remove('open');
+}
+// 点击遮罩 / 关闭按钮 / Esc 关闭
+document.addEventListener('DOMContentLoaded', () => {
+  const mask = document.getElementById('rangeModalMask');
+  if (mask) {
+    mask.addEventListener('click', (e) => {
+      if (e.target === mask) closeRangeModal();
+    });
+    const closeBtn = document.getElementById('rangeModalClose');
+    if (closeBtn) closeBtn.addEventListener('click', closeRangeModal);
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeRangeModal();
+});
 
 // 跳转到历史数据对应期号 (切换到历史 tab 并定位到该期)
 async function jumpToHistory(period, opts = {}) {
@@ -2144,5 +2376,21 @@ async function btInit() {
 
 init();
 </script>
+
+<!-- 区间数据弹窗 (独立显示, 避免公用列表翻页) -->
+<div class="range-modal-mask" id="rangeModalMask">
+  <div class="range-modal" id="rangeModal">
+    <div class="range-modal-head">
+      <div class="range-modal-title" id="rangeModalTitle">
+        最大间隔区间数据<span class="rm-tag" id="rangeModalTag"></span>
+      </div>
+      <button class="range-modal-close" id="rangeModalClose" aria-label="关闭">×</button>
+    </div>
+    <div class="range-modal-meta" id="rangeModalMeta"></div>
+    <div class="range-modal-body" id="rangeModalBody">
+      <div class="range-modal-loading">加载中</div>
+    </div>
+  </div>
+</div>
 </body>
 </html>

@@ -69,6 +69,11 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                     self._json(404, json.dumps({"error": "period_not_found"}))
                 else:
                     self._json(200, json.dumps(result))
+            elif path == "/api/history/range":
+                start = int(qs.get("start", ["0"])[0])
+                end = int(qs.get("end", ["0"])[0])
+                result = db.get_range(start, end)
+                self._json(200, json.dumps(result, ensure_ascii=False))
             elif path == "/api/trend":
                 limit = min(int(qs.get("limit", ["100"])[0]), 500)
                 self._json(200, json.dumps(db.get_trend(limit), ensure_ascii=False))

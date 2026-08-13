@@ -100,6 +100,27 @@ def get_history(page=1, size=30):
         conn.close()
 
 
+def get_range(start, end):
+    """按期号范围查询 (含两端), 返回升序列表。供弹窗显示最大间隔区间用。"""
+    if start > end:
+        start, end = end, start
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT draw_nbr, draw_date, draw_time, c1, c2, c3, draw_num, "
+            "size_type, parity_type, combination_type "
+            "FROM draws WHERE draw_nbr >= ? AND draw_nbr <= ? "
+            "ORDER BY draw_nbr ASC", (start, end)
+        ).fetchall()
+        return [{
+            "draw_nbr": r[0], "draw_date": r[1], "draw_time": r[2],
+            "c1": r[3], "c2": r[4], "c3": r[5], "draw_num": r[6],
+            "size_type": r[7], "parity_type": r[8], "combination_type": r[9]
+        } for r in rows]
+    finally:
+        conn.close()
+
+
 def find_period_page(period, size=30):
     """根据期号计算在分页列表中所在的页码 (按期号倒序, 从1开始)。"""
     conn = _conn()

@@ -886,9 +886,9 @@ tr.row-flash { animation: row-flash-anim 2s ease-out; }
         <div class="hourly-range">
           <span class="range-sep">时间范围</span>
           <div class="range-group" id="rangeGroup">
-            <button class="range-btn" data-days="1">1天</button>
+            <button class="range-btn active" data-days="1">1天</button>
             <button class="range-btn" data-days="3">3天</button>
-            <button class="range-btn active" data-days="7">7天</button>
+            <button class="range-btn" data-days="7">7天</button>
             <button class="range-btn" data-days="30">30天</button>
             <button class="range-btn" data-days="0">全部</button>
           </div>
@@ -1526,7 +1526,7 @@ async function loadUnopened() {
 }
 
 // ========== 按日期范围查看最大未开 ==========
-let currentDays = 7;  // 默认最近7天
+let currentDays = 1;  // 默认当天
 let currentStartDate = null;
 let currentEndDate = null;
 
@@ -1536,7 +1536,7 @@ function initHourlyPicker() {
   // 初始化日期范围控件
   initDateRange();
   // 默认加载
-  loadUnopened();
+  loadDateRangeStats();
 }
 
 function initDateRange() {
@@ -1554,7 +1554,7 @@ function initDateRange() {
       document.getElementById('startDate').value = '';
       document.getElementById('endDate').value = '';
       updateRangeLabel();
-      loadUnopened();
+      loadDateRangeStats();
     });
   });
   // 自定义日期确定
@@ -1574,7 +1574,7 @@ function initDateRange() {
     currentEndDate = e;
     document.querySelectorAll('#rangeGroup .range-btn').forEach(b => b.classList.remove('active'));
     updateRangeLabel();
-    loadUnopened();
+    loadDateRangeStats();
   });
   updateRangeLabel();
 }
@@ -1591,7 +1591,7 @@ function updateRangeLabel() {
   }
 }
 
-async function loadUnopened() {
+async function loadDateRangeStats() {
   const tbody = document.getElementById('hourlyTableBody');
   tbody.innerHTML = `<tr><td colspan="6" class="loading">加载中…</td></tr>`;
   try {

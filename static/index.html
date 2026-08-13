@@ -517,7 +517,7 @@ td .mini-ball {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
 }
-.range-group { display: flex; gap: var(--space-1); }
+.range-sep { color: var(--ink-3); font-size: var(--text-xs); }
 .range-btn {
   padding: 4px var(--space-3); border-radius: var(--radius);
   border: 1px solid var(--rule); background: transparent;
@@ -527,10 +527,6 @@ td .mini-ball {
   cursor: pointer; transition: all 0.15s ease;
 }
 .range-btn:hover { color: var(--accent); border-color: var(--accent); }
-.range-btn.active {
-  background: var(--accent); color: #fff; border-color: var(--accent);
-}
-.range-sep { color: var(--ink-3); font-size: var(--text-xs); }
 .range-input {
   padding: 3px var(--space-2); border: 1px solid var(--rule);
   border-radius: var(--radius);
@@ -913,14 +909,6 @@ tr.row-flash { animation: row-flash-anim 2s ease-out; }
         </div>
         <div class="hourly-range">
           <span class="range-sep">时间范围</span>
-          <div class="range-group" id="rangeGroup">
-            <button class="range-btn" data-days="1">1天</button>
-            <button class="range-btn" data-days="3">3天</button>
-            <button class="range-btn active" data-days="7">7天</button>
-            <button class="range-btn" data-days="30">30天</button>
-            <button class="range-btn" data-days="0">全部</button>
-          </div>
-          <span class="range-sep">|</span>
           <input type="date" id="startDate" class="range-input">
           <span class="range-sep">至</span>
           <input type="date" id="endDate" class="range-input">
@@ -1556,7 +1544,6 @@ async function loadUnopened() {
 
 // ========== 按时段查看最大未开 ==========
 let hourlyCurrentHour = -1;
-let currentDays = 7;  // 默认最近7天
 let currentStartDate = null;
 let currentEndDate = null;
 
@@ -1580,30 +1567,21 @@ function initHourlyPicker() {
     picker.appendChild(btn);
     btns.push(btn);
   }
-  // 初始化日期范围控件
+  // 初始化日期范围: 默认最近 7 天
   initDateRange();
   // 默认选择 12 时
   loadHourly(12);
 }
 
 function initDateRange() {
-  // 快捷按钮点击
-  document.querySelectorAll('#rangeGroup .range-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const days = parseInt(btn.dataset.days, 10);
-      currentDays = days > 0 ? days : null;
-      currentStartDate = null;
-      currentEndDate = null;
-      document.querySelectorAll('#rangeGroup .range-btn').forEach(b => {
-        b.classList.toggle('active', b === btn);
-      });
-      // 清除自定义日期
-      document.getElementById('startDate').value = '';
-      document.getElementById('endDate').value = '';
-      updateRangeLabel();
-      if (hourlyCurrentHour >= 0) loadHourly(hourlyCurrentHour);
-    });
-  });
+  // 默认填充最近 7 天的日期
+  const today = new Date();
+  const end = today.toISOString().slice(0, 10);
+  const start = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  document.getElementById('startDate').value = start;
+  document.getElementById('endDate').value = end;
+  currentStartDate = start;
+  currentEndDate = end;
   // 自定义日期确定
   document.getElementById('customDateBtn').addEventListener('click', () => {
     const s = document.getElementById('startDate').value;
@@ -1616,16 +1594,11 @@ function initDateRange() {
       alert('起始日期不能大于结束日期');
       return;
     }
-    currentDays = null;
     currentStartDate = s;
     currentEndDate = e;
-    document.querySelectorAll('#rangeGroup .range-btn').forEach(b => b.classList.remove('active'));
     updateRangeLabel();
     if (hourlyCurrentHour >= 0) loadHourly(hourlyCurrentHour);
   });
-  // 默认激活"7天"按钮
-  const defaultBtn = document.querySelector('#rangeGroup .range-btn[data-days="7"]');
-  if (defaultBtn) defaultBtn.classList.add('active');
   updateRangeLabel();
 }
 
@@ -1634,10 +1607,8 @@ function updateRangeLabel() {
   if (!label) return;
   if (currentStartDate && currentEndDate) {
     label.textContent = `${currentStartDate} ~ ${currentEndDate}`;
-  } else if (currentDays) {
-    label.textContent = `最近 ${currentDays} 天`;
   } else {
-    label.textContent = '全部历史';
+    label.textContent = '未选择';
   }
 }
 
@@ -1653,8 +1624,6 @@ async function loadHourly(hour) {
     let url = `/api/unopened-hourly?hour=${hour}`;
     if (currentStartDate && currentEndDate) {
       url += `&start_date=${encodeURIComponent(currentStartDate)}&end_date=${encodeURIComponent(currentEndDate)}`;
-    } else if (currentDays) {
-      url += `&days=${currentDays}`;
     }
     const resp = await fetch(url);
     const data = await resp.json();

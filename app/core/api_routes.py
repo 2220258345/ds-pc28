@@ -78,7 +78,14 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 self._json(200, json.dumps(db.get_unopened_stats_v2(), ensure_ascii=False))
             elif path == "/api/unopened-hourly":
                 hour = int(qs.get("hour", ["12"])[0])
-                self._json(200, json.dumps(db.get_unopened_by_hour(hour), ensure_ascii=False))
+                days_raw = qs.get("days", [None])[0]
+                days = int(days_raw) if days_raw and days_raw.isdigit() and int(days_raw) > 0 else None
+                start_date = qs.get("start_date", [None])[0] or None
+                end_date = qs.get("end_date", [None])[0] or None
+                result = db.get_unopened_by_hour(hour, days=days,
+                                                  start_date=start_date,
+                                                  end_date=end_date)
+                self._json(200, json.dumps(result, ensure_ascii=False))
             elif path == "/api/sum-unopened":
                 self._json(200, json.dumps(db.get_sum_unopened_stats(), ensure_ascii=False))
             elif path == "/api/draws":

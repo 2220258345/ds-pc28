@@ -135,15 +135,19 @@ def get_trend(limit=100):
         conn.close()
 
 
-def get_unopened_by_hour(hour):
+def get_unopened_by_hour(hour, days=None, start_date=None, end_date=None):
     """按小时统计各形态的最大/平均间隔, 并返回最大间隔的期号 (用于跳转查看历史数据)。
 
-    参数: hour (0-23) 时段
+    参数:
+      hour: 0-23 时段
+      days: 最近 N 天 (从最新一天向前推); 与 start_date/end_date 互斥
+      start_date / end_date: 自定义日期范围 'YYYY-MM-DD'
+
     返回: {
-      "hour": 12,
+      "hour": 12, "days": 7, "start_date": "2026-08-07", "end_date": "2026-08-13",
       "items": [
         {"type": "大", "count": 365, "avg": 4.0, "max": 41,
-         "max_period_start": 3465000, "max_period_end": 3465040,
+         "max_start": 3465000, "max_end": 3465040,
          "max_date": "2026-08-12", "max_time": "12:30:00"},
         ...
       ]
@@ -153,9 +157,29 @@ def get_unopened_by_hour(hour):
         hour = 0
     conn = _conn()
     try:
+        # 计算日期范围
+        latest_row = conn.execute(
+            "SELECT draw_date FROM draws ORDER BY draw_nbr DESC LIMIT 1"
+        ).fetchone()
+        if not latest_row:
+            return {"hour": hour, "days": 0, "start_date": "", "end_date": "", "items": []}
+
+        if start_date is None or end_date is None:
+            end_date = latest_row[0]
+            if days is None or days <= 0:
+                start_date = "1970-01-01"
+                days = 0
+            else:
+                from datetime import datetime, timedelta
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                start_dt = end_dt - timedelta(days=days - 1)
+                start_date = start_dt.strftime("%Y-%m-%d")
+
+        # 查范围内的期数
         rows = conn.execute(
             "SELECT draw_nbr, draw_date, draw_time, size_type, parity_type, draw_num "
-            "FROM draws ORDER BY draw_nbr ASC"
+            "FROM draws WHERE draw_date >= ? AND draw_date <= ? "
+            "ORDER BY draw_nbr ASC", (start_date, end_date)
         ).fetchall()
 
         def is_maint(date_str, time_str):
@@ -170,9 +194,15 @@ def get_unopened_by_hour(hour):
                          "date": "", "time": ""}
                     for t in intervals.keys()}
         last_seen = {}  # type -> (nbr, date, time)
+        prev_date = None
 
         for r in rows:
             nbr, date, time, sz, pa, sm = r
+            # 跨日期: 重置 last_seen, 避免把不同日期的间隔算进来
+            if prev_date is not None and date != prev_date:
+                last_seen = {}
+            prev_date = date
+
             h = int(time.split(":")[0])
             if is_maint(date, time):
                 last_seen = {}
@@ -180,8 +210,7 @@ def get_unopened_by_hour(hour):
             # 单形态
             for t in [sz, pa]:
                 if t in last_seen:
-                    prev_nbr, prev_date, prev_time = last_seen[t]
-                    prev_h = int(prev_time.split(":")[0])
+                    prev_nbr, prev_date_seen, prev_time = last_seen[t]
                     gap = nbr - prev_nbr
                     # 只统计"目标小时"出现的间隔 (即本次出现在 h=hour 时)
                     if h == hour:
@@ -195,7 +224,7 @@ def get_unopened_by_hour(hour):
             # 组合
             combo = f"{sz}{pa}"
             if combo in last_seen:
-                prev_nbr, prev_date, prev_time = last_seen[combo]
+                prev_nbr, prev_date_seen, prev_time = last_seen[combo]
                 gap = nbr - prev_nbr
                 if h == hour:
                     intervals[combo].append(gap)
@@ -220,7 +249,8 @@ def get_unopened_by_hour(hour):
                 "max_date": mi["date"],
                 "max_time": mi["time"]
             })
-        return {"hour": hour, "items": items}
+        return {"hour": hour, "days": days or 0,
+                "start_date": start_date, "end_date": end_date, "items": items}
     finally:
         conn.close()
 

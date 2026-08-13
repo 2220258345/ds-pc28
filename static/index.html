@@ -1064,7 +1064,7 @@ tr.row-range-end {
           <button class="bt-preset" data-bt-dir="rev">反投</button>
         </div>
         <div class="bt-ctrl-row"><label>止盈</label>
-          <input type="number" id="btSpInput" value="2500">
+          <input type="number" id="btSpInput" value="" placeholder="不限">
           <button class="bt-preset" id="btSpClear">无</button>
           <label>止损</label>
           <input type="number" id="btSlInput" placeholder="数值" min="0">
@@ -2110,6 +2110,92 @@ function btSummarize(sel) {
 
 function btDrawAll(sel) {
   const dates = sel.map(d=>d.d);
+
+  // 单日: 用逐期数据画分钟级曲线, 避免单点无线
+  if (sel.length === 1) {
+    const cfg = btCurCfg;
+    const dayStr = sel[0].d;
+    const start = cfg.times.findIndex(t => t.slice(0,10) === dayStr);
+    if (start >= 0) {
+      let end = start;
+      while (end < cfg.times.length && cfg.times[end].slice(0,10) === dayStr) end++;
+      const labels = [];
+      const dailyCum = [];
+      const perPnl = [];
+      let prev = 0;
+      for (let i = start; i < end; i++) {
+        labels.push(cfg.times[i].slice(11));   // "HH:MM"
+        dailyCum.push(cfg.d[i]);
+        perPnl.push(cfg.d[i] - prev);
+        prev = cfg.d[i];
+      }
+      // 累计盈亏曲线 (分钟级)
+      btCharts.equity.setOption({
+        tooltip: Object.assign({}, BT_TT, { formatter: p => {
+          const i = btSafeIdx(p); if (i<0 || i>=labels.length) return '';
+          return `${dayStr} ${labels[i]} · 累计 ${btSgn(dailyCum[i])}${BT_FMT.format(dailyCum[i])} · 本期 ${btSgn(perPnl[i])}${BT_FMT.format(perPnl[i])}`;
+        } }),
+        grid:{left:70,right:20,top:25,bottom:55},
+        xAxis:{type:'category',data:labels,axisLabel:{color:'#8b8fa3',fontSize:12,interval:Math.max(0,Math.floor(labels.length/8)-1)},axisLine:{lineStyle:{color:'#e4e7ed'}}},
+        yAxis:{type:'value',axisLabel:{color:'#8b8fa3',fontSize:13,formatter:v=>BT_FMT.format(v)},splitLine:{lineStyle:{color:'#eef0f5'}}},
+        dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#e4e7ed',backgroundColor:'#ffffff',dataBackground:{lineStyle:{color:'#e4e7ed'},areaStyle:{color:'#f0f2f7'}},selectedDataBackground:{lineStyle:{color:'#4361ee'},areaStyle:{color:'#4361ee'}}}],
+        visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#e5484d'},{gt:0,lte:1e15,color:'#30a46c'}]},
+        series:[{type:'line',data:dailyCum,smooth:false,symbol:'none',lineStyle:{width:2},
+          markLine:{symbol:'none',silent:true,lineStyle:{color:'#e8a317',type:'dashed',width:1},
+            label:{show:true,formatter:'0',position:'insideEndTop',color:'#8b8fa3',fontSize:12},
+            data:[{yAxis:0}]}}]
+      }, {notMerge:true});
+      // 每期盈亏柱状 (分钟级)
+      btCharts.daily.setOption({
+        tooltip:Object.assign({}, BT_TT, { formatter:p=>{
+          const i=btSafeIdx(p); if (i<0 || i>=labels.length) return '';
+          return `${dayStr} ${labels[i]} · ${btSgn(perPnl[i])}${BT_FMT.format(perPnl[i])}`; }}),
+        grid:{left:70,right:20,top:25,bottom:55},
+        xAxis:{type:'category',data:labels,axisLabel:{color:'#8b8fa3',fontSize:12,interval:Math.max(0,Math.floor(labels.length/8)-1)},axisLine:{lineStyle:{color:'#e4e7ed'}}},
+        yAxis:{type:'value',axisLabel:{color:'#8b8fa3',fontSize:13,formatter:v=>BT_FMT.format(v)},splitLine:{lineStyle:{color:'#eef0f5'}}},
+        dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#e4e7ed',backgroundColor:'#ffffff',dataBackground:{lineStyle:{color:'#e4e7ed'},areaStyle:{color:'#f0f2f7'}},selectedDataBackground:{lineStyle:{color:'#4361ee'},areaStyle:{color:'#4361ee'}}}],
+        series:[{type:'bar',data:perPnl.map(v=>v!==0?v:null),barMaxWidth:6,
+          itemStyle:{color: params => params.value>=0?'#30a46c':'#e5484d'},
+          markLine:{symbol:'none',silent:true,lineStyle:{color:'#e8a317',type:'dashed',width:1},
+            label:{show:true,formatter:'0',position:'insideEndTop',color:'#8b8fa3',fontSize:12},
+            data:[{yAxis:0}]}}]
+      }, {notMerge:true});
+    }
+    // 炸次柱状 (单日单根)
+    btCharts.burststrip.setOption({
+      tooltip:Object.assign({}, BT_TT, { formatter:p=>`${dayStr} · 炸 ${sel[0].br} 次` }),
+      grid:{left:70,right:20,top:6,bottom:20},
+      xAxis:{type:'category',data:[dayStr],axisLabel:{show:false},axisLine:{lineStyle:{color:'#e4e7ed'}}},
+      yAxis:{type:'value',min:0,max:Math.max(1,sel[0].br),interval:1,show:false},
+      series:[{type:'bar',data:[sel[0].br>0?sel[0].br:null],barMaxWidth:20,
+        itemStyle:{color:'#e5484d',borderRadius:[2,2,0,0]}}]
+    }, {notMerge:true});
+    // 回撤/双错等仍用单日汇总
+    btCharts.drawdown.setOption({
+      tooltip:Object.assign({}, BT_TT, { formatter:p=>`${dayStr} · 当日 ${btSgn(sel[0].p)}${BT_FMT.format(sel[0].p)}` }),
+      grid:{left:70,right:20,top:25,bottom:50},
+      xAxis:{type:'category',data:[dayStr],axisLabel:{color:'#8b8fa3',fontSize:13},axisLine:{lineStyle:{color:'#e4e7ed'}}},
+      yAxis:{type:'value',axisLabel:{color:'#8b8fa3',fontSize:13,formatter:v=>BT_FMT.format(v)},splitLine:{lineStyle:{color:'#eef0f5'}}},
+      series:[{type:'bar',data:[{value:sel[0].p,itemStyle:{color:sel[0].p>=0?'#30a46c':'#e5484d'}}],barMaxWidth:60,
+        label:{show:true,position:'top',color:'#545870',fontSize:13,formatter:p=>`${p.value>=0?'+':''}${BT_FMT.format(p.value)}`}}]
+    }, {notMerge:true});
+    btCharts.outcomes.setOption({
+      tooltip:Object.assign({}, BT_TT, { formatter:p=>`${dayStr} · ${p.seriesName} ${p.value} 次` }),
+      legend:{textStyle:{color:'#545870',fontSize:13},top:0},
+      grid:{left:50,right:20,top:30,bottom:50},
+      xAxis:{type:'category',data:[dayStr],axisLabel:{color:'#8b8fa3',fontSize:13},axisLine:{lineStyle:{color:'#e4e7ed'}}},
+      yAxis:{type:'value',axisLabel:{color:'#8b8fa3',fontSize:13},splitLine:{lineStyle:{color:'#eef0f5'}}},
+      series:[
+        {name:'双中',type:'bar',stack:'o',data:[sel[0].w],itemStyle:{color:'rgba(48,164,108,0.7)'},barMaxWidth:50},
+        {name:'平局',type:'bar',stack:'o',data:[sel[0].f],itemStyle:{color:'rgba(232,163,23,0.6)'},barMaxWidth:50},
+        {name:'双错',type:'bar',stack:'o',data:[sel[0].l],itemStyle:{color:'rgba(229,72,77,0.7)'},barMaxWidth:50}
+      ]
+    }, {notMerge:true});
+    btSummarize(sel);
+    btDrawBurstHour(sel);
+    return;
+  }
+
   const cum = []; let c = 0;
   sel.forEach(d => { c += d.p; cum.push(c); });
 
@@ -2127,7 +2213,7 @@ function btDrawAll(sel) {
     yAxis:{type:'value',axisLabel:{color:'#8b8fa3',fontSize:13,formatter:v=>BT_FMT.format(v)},splitLine:{lineStyle:{color:'#eef0f5'}}},
     dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8,borderColor:'#e4e7ed',backgroundColor:'#ffffff',dataBackground:{lineStyle:{color:'#e4e7ed'},areaStyle:{color:'#f0f2f7'}},selectedDataBackground:{lineStyle:{color:'#4361ee'},areaStyle:{color:'#4361ee'}}}],
     visualMap:{show:false,seriesIndex:0,type:'piecewise',pieces:[{gte:-1e15,lte:0,color:'#e5484d'},{gt:0,lte:1e15,color:'#30a46c'}]},
-    series:[{type:'line',data:cum,smooth:true,symbol:sel.length<=1?'circle':'none',symbolSize:8,lineStyle:{width:2},
+    series:[{type:'line',data:cum,smooth:true,symbol:'none',symbolSize:8,lineStyle:{width:2},
       markLine:{symbol:'none',silent:true,lineStyle:{color:'#e8a317',type:'dashed',width:1},
         label:{show:true,formatter:'0',position:'insideEndTop',color:'#8b8fa3',fontSize:12},
         data:[{yAxis:0}]}}]

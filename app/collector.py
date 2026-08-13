@@ -333,8 +333,8 @@ SOURCES = {
     "pc28www":   {"name": "www.pc28.help csv", "fn": lambda: fetch_pc28help(2000, "www.pc28.help")},
 }
 
-# 增量更新优先级: pc89.net 实测发布最快, 其次 pc28.help json, jndpc, wh28 最慢
-INCREMENTAL_ORDER = ["pc89", "pc28j", "jndpc", "wh28l", "wh28", "wh28t", "pc28wwwj", "pc28", "pc28www"]
+# 增量更新优先级: 不使用 jndpc 作为数据源 (其接口无真实开奖时间，会把服务器时间当开奖时间)
+INCREMENTAL_ORDER = ["pc89", "pc28j", "wh28l", "wh28", "wh28t", "pc28wwwj", "pc28", "pc28www"]
 # 全量更新优先级: 大批量源优先 (JSON 优先于 CSV)
 FULL_ORDER = ["pc28j", "pc28wwwj", "pc28", "pc28www"]
 
@@ -355,6 +355,42 @@ def fetch_with_failover(order, verbose=True):
                 print(f"失败 ({e})")
             time.sleep(0.5)
     return None, None
+
+
+FAST_INC_SOURCES = ["pc89", "wh28l"]
+
+
+def fetch_incremental_multi(verbose=False):
+    """增量采集：并发请求多个快速源，返回合并后的最新数据。
+
+    与 fetch_with_failover 的区别：不因第一个源成功就停止，
+    而是并发抓取 pc89 / jndpc / wh28-latest，再合并交给 insert_rows
+    去重/upsert。这样只要任一源率先发布新期，就能更快拿到结果。
+    全部快速源失败时，回退到完整故障切换顺序。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _call(key):
+        try:
+            return SOURCES[key]["fn"]() or []
+        except Exception:
+            return []
+
+    with ThreadPoolExecutor(max_workers=len(FAST_INC_SOURCES)) as ex:
+        results = list(ex.map(_call, FAST_INC_SOURCES))
+
+    rows = []
+    for r in results:
+        rows.extend(r)
+    if rows:
+        if verbose:
+            print(f"multi: 合并 {len(rows)} 期")
+        return rows
+
+    if verbose:
+        print("multi: 快速源全部失败, 回退完整顺序")
+    rows, _ = fetch_with_failover(INCREMENTAL_ORDER, verbose=verbose)
+    return rows or []
 
 
 # ============================================================

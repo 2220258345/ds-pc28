@@ -19,7 +19,13 @@ from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer
 from socketserver import ThreadingMixIn
 
-from collector import fetch_with_failover, INCREMENTAL_ORDER, FULL_ORDER, insert_rows, verify
+from collector import (
+    fetch_with_failover,
+    fetch_incremental_multi,
+    FULL_ORDER,
+    insert_rows,
+    verify,
+)
 from core import db, time_sync, sse, api_routes
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -60,7 +66,8 @@ def do_update():
     pre_max = db.get_db_rows()[1] or 0
 
     try:
-        rows, src = fetch_with_failover(INCREMENTAL_ORDER, verbose=False)
+        rows = fetch_incremental_multi(verbose=False)
+        src = "multi"
         if not rows:
             with _lock:
                 _status["last_result"] = "failed"
@@ -198,6 +205,14 @@ def main():
     # 同步时钟 (与参考站对齐, 消除本地时钟偏差)
     print("同步时钟...")
     time_sync.sync_time_offset()
+
+    # 先建立参考点，避免采集线程在参考点未建立时用 BASE_EPOCH 兜底导致倒计时漂移
+    row = db.get_latest_draw()
+    if row:
+        d = datetime.strptime(f"{row[1]} {row[2]}", "%Y-%m-%d %H:%M:%S")
+        ref_ts = d.replace(tzinfo=time_sync.CN_TZ).timestamp()
+        time_sync.set_reference(row[0], ref_ts)
+
     time_sync.start_sync_loop(300)
 
     # 启动后台采集线程

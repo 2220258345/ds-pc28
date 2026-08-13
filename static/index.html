@@ -1668,7 +1668,7 @@ async function loadUnopened() {
         <div class="type-count" style="color:${statusColor}">${cur}</div>
         <div class="type-desc">${t.desc}</div>
         <div class="type-meta">平均 <b>${it.avg}</b> · 中位 <b>${it.med}</b> · 最大 <b>${it.max}</b></div>
-        <div class="type-meta">P95 <b>${it.p95}</b> · P99 <b>${it.p99}</b> · 当前/平均 <b>${it.ratio}×</b></div>
+        <div class="type-meta" title="历史遗漏中约 95% 不超过 ${it.p95} 期，99% 不超过 ${it.p99} 期">95分位 <b>${it.p95}</b> · 99分位 <b>${it.p99}</b> · 约为平均的 <b>${it.ratio}</b> 倍</div>
         <div class="type-bar">
           <div class="type-bar-fill" style="width:${Math.min(100, (cur / Math.max(it.max, 1)) * 100)}%; background:${statusColor}"></div>
         </div>

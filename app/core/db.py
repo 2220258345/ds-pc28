@@ -100,6 +100,24 @@ def get_history(page=1, size=30):
         conn.close()
 
 
+def find_period_page(period, size=30):
+    """根据期号计算在分页列表中所在的页码 (按期号倒序, 从1开始)。"""
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM draws WHERE draw_nbr >= ?", (period,)
+        ).fetchone()
+        if not row or row[0] == 0:
+            return None
+        later_count = row[0] - 1
+        page = (later_count // size) + 1
+        total = conn.execute("SELECT COUNT(*) FROM draws").fetchone()[0]
+        pages = (total + size - 1) // size
+        return {"page": page, "total": total, "pages": pages}
+    finally:
+        conn.close()
+
+
 def get_trend(limit=100):
     """获取最近 limit 期走势数据 (按期号升序返回)。"""
     conn = _conn()
@@ -113,6 +131,96 @@ def get_trend(limit=100):
             "draw_nbr": r[0], "draw_num": r[1],
             "size_type": r[2], "parity_type": r[3],
         } for r in rows]
+    finally:
+        conn.close()
+
+
+def get_unopened_by_hour(hour):
+    """按小时统计各形态的最大/平均间隔, 并返回最大间隔的期号 (用于跳转查看历史数据)。
+
+    参数: hour (0-23) 时段
+    返回: {
+      "hour": 12,
+      "items": [
+        {"type": "大", "count": 365, "avg": 4.0, "max": 41,
+         "max_period_start": 3465000, "max_period_end": 3465040,
+         "max_date": "2026-08-12", "max_time": "12:30:00"},
+        ...
+      ]
+    }
+    """
+    if hour < 0 or hour > 23:
+        hour = 0
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT draw_nbr, draw_date, draw_time, size_type, parity_type, draw_num "
+            "FROM draws ORDER BY draw_nbr ASC"
+        ).fetchall()
+
+        def is_maint(date_str, time_str):
+            hm = time_str.split(":")
+            minutes = int(hm[0]) * 60 + int(hm[1])
+            return (19 * 60 <= minutes < 19 * 60 + 33) or (20 * 60 <= minutes < 20 * 60 + 33)
+
+        # 收集每个形态在指定小时出现的所有间隔 + 最大间隔对应的期号区间
+        intervals = {t: [] for t in
+                     ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]}
+        max_info = {t: {"max": 0, "start": 0, "end": 0,
+                         "date": "", "time": ""}
+                    for t in intervals.keys()}
+        last_seen = {}  # type -> (nbr, date, time)
+
+        for r in rows:
+            nbr, date, time, sz, pa, sm = r
+            h = int(time.split(":")[0])
+            if is_maint(date, time):
+                last_seen = {}
+                continue
+            # 单形态
+            for t in [sz, pa]:
+                if t in last_seen:
+                    prev_nbr, prev_date, prev_time = last_seen[t]
+                    prev_h = int(prev_time.split(":")[0])
+                    gap = nbr - prev_nbr
+                    # 只统计"目标小时"出现的间隔 (即本次出现在 h=hour 时)
+                    if h == hour:
+                        intervals[t].append(gap)
+                        if gap > max_info[t]["max"]:
+                            max_info[t] = {
+                                "max": gap, "start": prev_nbr, "end": nbr,
+                                "date": date, "time": time
+                            }
+                last_seen[t] = (nbr, date, time)
+            # 组合
+            combo = f"{sz}{pa}"
+            if combo in last_seen:
+                prev_nbr, prev_date, prev_time = last_seen[combo]
+                gap = nbr - prev_nbr
+                if h == hour:
+                    intervals[combo].append(gap)
+                    if gap > max_info[combo]["max"]:
+                        max_info[combo] = {
+                            "max": gap, "start": prev_nbr, "end": nbr,
+                            "date": date, "time": time
+                        }
+            last_seen[combo] = (nbr, date, time)
+
+        items = []
+        for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]:
+            g = intervals[t]
+            mi = max_info[t]
+            items.append({
+                "type": t,
+                "count": len(g),
+                "avg": round(sum(g) / len(g), 2) if g else 0,
+                "max": mi["max"],
+                "max_start": mi["start"],
+                "max_end": mi["end"],
+                "max_date": mi["date"],
+                "max_time": mi["time"]
+            })
+        return {"hour": hour, "items": items}
     finally:
         conn.close()
 

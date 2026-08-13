@@ -62,6 +62,13 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 page = int(qs.get("page", ["1"])[0])
                 size = min(int(qs.get("size", ["30"])[0]), 100)
                 self._json(200, json.dumps(db.get_history(page, size), ensure_ascii=False))
+            elif path == "/api/history/find":
+                period = int(qs.get("period", ["0"])[0])
+                result = db.find_period_page(period)
+                if result is None:
+                    self._json(404, json.dumps({"error": "period_not_found"}))
+                else:
+                    self._json(200, json.dumps(result))
             elif path == "/api/trend":
                 limit = min(int(qs.get("limit", ["100"])[0]), 500)
                 self._json(200, json.dumps(db.get_trend(limit), ensure_ascii=False))
@@ -69,6 +76,9 @@ def make_handler(status_provider=None, update_callback=None, toggle_auto_callbac
                 self._json(200, json.dumps(db.get_unopened_stats(), ensure_ascii=False))
             elif path == "/api/unopened-v2":
                 self._json(200, json.dumps(db.get_unopened_stats_v2(), ensure_ascii=False))
+            elif path == "/api/unopened-hourly":
+                hour = int(qs.get("hour", ["12"])[0])
+                self._json(200, json.dumps(db.get_unopened_by_hour(hour), ensure_ascii=False))
             elif path == "/api/sum-unopened":
                 self._json(200, json.dumps(db.get_sum_unopened_stats(), ensure_ascii=False))
             elif path == "/api/draws":

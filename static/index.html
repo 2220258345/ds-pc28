@@ -573,6 +573,18 @@ td .mini-ball {
   100% { background: transparent; }
 }
 tr.row-flash { animation: row-flash-anim 2s ease-out; }
+/* 区间高亮: 起点绿 / 终点红 / 中间淡蓝 */
+tr.row-range-start {
+  background: rgba(48,164,108,0.28) !important;
+  box-shadow: inset 4px 0 0 #30a46c;
+}
+tr.row-range-mid {
+  background: rgba(67,97,238,0.10) !important;
+}
+tr.row-range-end {
+  background: rgba(229,72,77,0.28) !important;
+  box-shadow: inset 4px 0 0 #e5484d;
+}
 
 /* ========== Sum Unopened Grid ========== */
 .sum-unopened-wrap {
@@ -1613,7 +1625,7 @@ async function loadDateRangeStats() {
     tbody.innerHTML = data.items.map(it => {
       const hasMax = it.max > 0;
       const periodCell = hasMax
-        ? `<a class="h-period" data-period="${it.max_end}" data-date="${it.max_date}" title="点击跳转到历史数据">${it.max_start} → ${it.max_end}</a>`
+        ? `<a class="h-period" data-start="${it.max_start}" data-end="${it.max_end}" data-date="${it.max_date}" title="点击跳转到历史数据并标出区间">${it.max_start} → ${it.max_end}</a>`
         : `<span class="h-empty">—</span>`;
       const dateCell = hasMax ? `${it.max_date} ${it.max_time.slice(0,5)}` : '<span class="h-empty">—</span>';
       return `<tr>
@@ -1629,8 +1641,9 @@ async function loadDateRangeStats() {
     tbody.querySelectorAll('.h-period').forEach(a => {
       a.onclick = (e) => {
         e.preventDefault();
-        const period = Number(a.dataset.period);
-        jumpToHistory(period);
+        const start = Number(a.dataset.start);
+        const end = Number(a.dataset.end);
+        jumpToHistory(end, { rangeStart: start, rangeEnd: end });
       };
     });
   } catch (e) {
@@ -1639,7 +1652,7 @@ async function loadDateRangeStats() {
 }
 
 // 跳转到历史数据对应期号 (切换到历史 tab 并定位到该期)
-async function jumpToHistory(period) {
+async function jumpToHistory(period, opts = {}) {
   // 1. 切换到历史数据 tab
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === 'history');
@@ -1657,15 +1670,45 @@ async function jumpToHistory(period) {
   } catch (e) { /* fallback to page 1 */ }
   // 3. 加载对应页, 滚到目标期号
   loadHistory(targetPage, () => {
+    const rangeStart = Number(opts.rangeStart);
+    const rangeEnd = Number(opts.rangeEnd);
+    const hasRange = Number.isFinite(rangeStart) && Number.isFinite(rangeEnd);
     let attempts = 0;
     const tryFlash = () => {
       attempts++;
+      // 清理上一次高亮
+      document.querySelectorAll('tr.row-range-start, tr.row-range-mid, tr.row-range-end')
+        .forEach(r => r.classList.remove('row-range-start', 'row-range-mid', 'row-range-end'));
       const row = document.querySelector(`#historyTable tr[data-nbr="${period}"]`)
               || document.querySelector(`#historyBody tr[data-nbr="${period}"]`);
       if (row) {
         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        row.classList.add('row-flash');
-        setTimeout(() => row.classList.remove('row-flash'), 3000);
+        // 区间高亮: 起点绿 / 中间淡蓝 / 终点红
+        if (hasRange && rangeEnd >= rangeStart) {
+          for (let p = rangeStart; p <= rangeEnd; p++) {
+            const r = document.querySelector(`#historyTable tr[data-nbr="${p}"]`)
+                   || document.querySelector(`#historyBody tr[data-nbr="${p}"]`);
+            if (!r) continue;
+            if (p === rangeStart && p === rangeEnd) {
+              r.classList.add('row-range-start');
+            } else if (p === rangeStart) {
+              r.classList.add('row-range-start');
+            } else if (p === rangeEnd) {
+              r.classList.add('row-range-end');
+            } else {
+              r.classList.add('row-range-mid');
+            }
+          }
+          // 5 秒后清理
+          setTimeout(() => {
+            document.querySelectorAll('tr.row-range-start, tr.row-range-mid, tr.row-range-end')
+              .forEach(r => r.classList.remove('row-range-start', 'row-range-mid', 'row-range-end'));
+          }, 5000);
+        } else {
+          // 单期号高亮 (兼容旧调用)
+          row.classList.add('row-flash');
+          setTimeout(() => row.classList.remove('row-flash'), 3000);
+        }
       } else if (attempts < 8) {
         setTimeout(tryFlash, 120);
       }

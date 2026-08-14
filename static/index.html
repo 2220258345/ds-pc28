@@ -901,6 +901,56 @@ tr.row-range-end {
   font-size: var(--text-sm);
   line-height: 1.7;
 }
+
+/* 刮奖开关 */
+.scratch-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.scratch-toggle input { display: none; }
+.scratch-toggle .track {
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--rule-2);
+  position: relative;
+  transition: background 0.2s;
+}
+.scratch-toggle .track::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  transition: transform 0.2s;
+}
+.scratch-toggle input:checked + .track { background: var(--accent); }
+.scratch-toggle input:checked + .track::after { transform: translateX(18px); }
+
+/* 刮刮卡覆盖层 */
+.result-card { position: relative; overflow: hidden; }
+.balls-wrap { position: relative; display: flex; flex: 1; }
+.scratch-layer {
+  position: absolute;
+  inset: 0;
+  display: none;
+  cursor: grab;
+  touch-action: none;
+  z-index: 5;
+  opacity: 1;
+}
+.scratch-layer.active { display: block; }
+.scratch-layer canvas { display: block; }
 </style>
 </head>
 <body>
@@ -918,6 +968,11 @@ tr.row-range-end {
       <nav class="header-nav">
         <a href="/api-doc" target="_blank"><span class="nav-dot"></span>API 文档</a>
       </nav>
+      <label class="scratch-toggle" title="开启后，新开奖结果需手动刮开查看">
+        <input type="checkbox" id="scratchToggle">
+        <span class="track"></span>
+        <span>刮奖</span>
+      </label>
       <div class="header-status">
         <span><span class="status-dot"></span>自动采集中</span>
         <span id="dbInfo">加载中...</span>
@@ -948,14 +1003,19 @@ tr.row-range-end {
       <div class="result-card">
         <div class="result-label">最新数据</div>
         <div class="result-period" id="latestPeriod">第 --- 期</div>
-        <div class="balls" id="latestBalls">
-          <div class="ball c0">?</div>
-          <span class="ball-sep">+</span>
-          <div class="ball c0">?</div>
-          <span class="ball-sep">+</span>
-          <div class="ball c0">?</div>
-          <span class="ball-sep">=</span>
-          <span class="ball-sum">?</span>
+        <div class="balls-wrap">
+          <div class="balls" id="latestBalls">
+            <div class="ball c0">?</div>
+            <span class="ball-sep">+</span>
+            <div class="ball c0">?</div>
+            <span class="ball-sep">+</span>
+            <div class="ball c0">?</div>
+            <span class="ball-sep">=</span>
+            <span class="ball-sum">?</span>
+          </div>
+          <div class="scratch-layer" id="scratchLayer">
+            <canvas id="scratchCanvas"></canvas>
+          </div>
         </div>
         <div class="result-badges" id="latestBadges"></div>
       </div>
@@ -1270,22 +1330,8 @@ function setupSSE() {
 }
 
 function onNewDraw(latest) {
-  // 用服务器推送的数据刷新显示
-  showLatestResult(latest, true);
-  // 同步刷新历史列表 / 未开期数 / 特码未出 / 退出等待状态
-  if (latest.draw_nbr > lastDrawNbr) {
-    lastDrawNbr = latest.draw_nbr;
-    loadHistory(currentPage);
-    loadUnopened();
-    loadSumUnopened();
-  }
-  if (waitingForResult) {
-    exitWaitingState();
-  }
-  // 维护结束后收到新数据, 退出维护状态
-  if (inMaintenanceState) {
-    exitMaintenanceState();
-  }
+  // 统一入口：刮奖模式会先盖住，等刮开后再刷新下方面板
+  handleNewDraw(latest);
 }
 
 // ========== 倒计时 ==========
@@ -1403,13 +1449,7 @@ async function pollForNewDraw(afterNbr) {
       const data = await resp.json();
       if (data.latest && data.latest.draw_nbr > afterNbr) {
         // 新数据到了! 先更新页面
-        showLatestResult(data.latest, true);
-        lastDrawNbr = data.latest.draw_nbr;
-        loadHistory(currentPage);
-        loadUnopened();
-        loadSumUnopened();
-        // 数据显示完毕, 才恢复倒计时
-        exitWaitingState();
+        handleNewDraw(data.latest);
         return;
       }
     } catch (e) {
@@ -1473,6 +1513,148 @@ function showLatestResult(d, animate) {
   }
 }
 
+// ========== 刮奖 ==========
+let scratchEnabled = false;
+let scratchPendingRefresh = false;
+
+function refreshDataPanels() {
+  loadHistory(currentPage);
+  loadUnopened();
+  loadSumUnopened();
+}
+
+function handleNewDraw(latest) {
+  const isNew = latest.draw_nbr > lastDrawNbr;
+  if (isNew) lastDrawNbr = latest.draw_nbr;
+  if (scratchEnabled) {
+    showLatestResult(latest, false);
+    showScratch();
+    scratchPendingRefresh = isNew;
+  } else {
+    showLatestResult(latest, true);
+    if (isNew) refreshDataPanels();
+  }
+  if (waitingForResult) exitWaitingState();
+  if (inMaintenanceState) exitMaintenanceState();
+}
+
+let scratchCtx = null;
+let scratchChecked = false;
+let scratching = false;
+
+function showScratch() {
+  const layer = document.getElementById('scratchLayer');
+  const canvas = document.getElementById('scratchCanvas');
+  const card = document.querySelector('.result-card');
+  layer.style.opacity = '1';
+  layer.style.transition = 'none';
+  layer.classList.add('active');
+  const r = card.getBoundingClientRect();
+  canvas.width = r.width;
+  canvas.height = r.height;
+  canvas.style.width = r.width + 'px';
+  canvas.style.height = r.height + 'px';
+  const ctx = canvas.getContext('2d');
+  scratchCtx = ctx;
+  const g = ctx.createLinearGradient(0, 0, r.width, r.height);
+  g.addColorStop(0, '#e0c88f');
+  g.addColorStop(0.5, '#bfa166');
+  g.addColorStop(1, '#8a6d3b');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, r.width, r.height);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.font = '700 18px -apple-system, "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('👆 刮开查看开奖结果', r.width / 2, r.height / 2 - 12);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('拖动鼠标 / 手指', r.width / 2, r.height / 2 + 16);
+  scratchChecked = false;
+}
+
+function hideScratch() {
+  const layer = document.getElementById('scratchLayer');
+  layer.classList.remove('active');
+  layer.style.opacity = '1';
+  layer.style.transition = 'none';
+  scratchCtx = null;
+  if (scratchPendingRefresh) {
+    scratchPendingRefresh = false;
+    refreshDataPanels();
+  }
+}
+
+function scratchAt(x, y) {
+  if (!scratchCtx) return;
+  const ctx = scratchCtx;
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  ctx.arc(x, y, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  checkScratchRatio();
+}
+
+function getScratchRatio() {
+  const canvas = document.getElementById('scratchCanvas');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  if (!w || !h) return 0;
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let cleared = 0, total = 0;
+  for (let i = 3; i < data.length; i += 160) {
+    total++;
+    if (data[i] < 128) cleared++;
+  }
+  return total ? cleared / total : 0;
+}
+
+function revealScratch() {
+  if (scratchChecked) return;
+  scratchChecked = true;
+  const layer = document.getElementById('scratchLayer');
+  layer.style.transition = 'opacity 0.5s';
+  layer.style.opacity = '0';
+  setTimeout(hideScratch, 500);
+}
+
+function checkScratchRatio() {
+  if (scratchChecked) return;
+  if (getScratchRatio() > 0.35) revealScratch();
+}
+
+function bindScratch() {
+  const canvas = document.getElementById('scratchCanvas');
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    scratching = true;
+    canvas.setPointerCapture(e.pointerId);
+    const p = pos(e);
+    scratchAt(p.x, p.y);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (scratching) {
+      const p = pos(e);
+      scratchAt(p.x, p.y);
+    }
+  });
+  canvas.addEventListener('pointerup', () => {
+    scratching = false;
+    if (getScratchRatio() > 0.12) revealScratch();
+  });
+  canvas.addEventListener('pointercancel', () => { scratching = false; });
+}
+
+document.getElementById('scratchToggle').addEventListener('change', (e) => {
+  scratchEnabled = e.target.checked;
+  if (!scratchEnabled) hideScratch();
+});
+bindScratch();
+
 async function loadLatest(animate) {
   try {
     const resp = await fetch('/api/latest');
@@ -1481,16 +1663,11 @@ async function loadLatest(animate) {
 
     // 期号变化时, 刷新所有相关数据 (SSE 兜底机制)
     const isNew = lastDrawNbr > 0 && data.latest.draw_nbr > lastDrawNbr;
-    showLatestResult(data.latest, animate);
     if (isNew) {
       console.log('[loadLatest] 检测到期号变化 #' + lastDrawNbr + ' -> #' + data.latest.draw_nbr);
-      loadHistory(currentPage);
-      loadUnopened();
-      loadSumUnopened();
-      // 如果在等待状态, 退出
-      if (waitingForResult) {
-        exitWaitingState();
-      }
+      handleNewDraw(data.latest);
+    } else {
+      showLatestResult(data.latest, animate);
     }
     lastDrawNbr = data.latest.draw_nbr;
   } catch (e) {

@@ -947,9 +947,21 @@ tr.row-range-end {
   touch-action: none;
   z-index: 5;
   opacity: 1;
+  border-radius: var(--radius);
 }
-.scratch-layer.active { display: block; }
+.scratch-layer.active {
+  display: block;
+  animation: scratchGlow 1.8s ease-in-out infinite;
+}
 .scratch-layer canvas { display: block; }
+@keyframes scratchGlow {
+  0%, 100% {
+    box-shadow: inset 0 0 0 2px rgba(255, 200, 60, 0.35), 0 0 16px rgba(255, 200, 60, 0.25);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px rgba(255, 200, 60, 0.85), 0 0 28px rgba(255, 200, 60, 0.55);
+  }
+}
 </style>
 </head>
 <body>
@@ -1512,6 +1524,7 @@ function showLatestResult(d, animate) {
 
 // ========== 刮奖 ==========
 let scratchEnabled = false;
+let scratchPendingRefresh = false;
 
 function refreshDataPanels() {
   loadHistory(currentPage);
@@ -1525,10 +1538,11 @@ function handleNewDraw(latest) {
   if (scratchEnabled) {
     showLatestResult(latest, false);
     showScratch();
+    scratchPendingRefresh = isNew;
   } else {
     showLatestResult(latest, true);
+    if (isNew) refreshDataPanels();
   }
-  if (isNew) refreshDataPanels();
   if (waitingForResult) exitWaitingState();
   if (inMaintenanceState) exitMaintenanceState();
 }
@@ -1561,10 +1575,10 @@ function showScratch() {
   ctx.font = '700 18px -apple-system, "Microsoft YaHei", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('👆 刮开查看开奖结果', r.width / 2, r.height / 2 - 12);
+  ctx.fillText('👆 刮开查看本期开奖', r.width / 2, r.height / 2 - 12);
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   ctx.font = '12px sans-serif';
-  ctx.fillText('拖动鼠标 / 手指', r.width / 2, r.height / 2 + 16);
+  ctx.fillText('拖动刮开 · 松手自动完成', r.width / 2, r.height / 2 + 16);
   scratchChecked = false;
 }
 
@@ -1574,6 +1588,10 @@ function hideScratch() {
   layer.style.opacity = '1';
   layer.style.transition = 'none';
   scratchCtx = null;
+  if (scratchPendingRefresh) {
+    scratchPendingRefresh = false;
+    refreshDataPanels();
+  }
 }
 
 function scratchAt(x, y) {

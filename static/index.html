@@ -1456,6 +1456,10 @@ async function pollForNewDraw(afterNbr) {
     try {
       const resp = await fetch('/api/latest');
       const data = await resp.json();
+      // 同步期号/倒计时缓存，避免退出等待后仍用旧倒计时再次进入等待
+      if (data.current_period) serverPeriod = data.current_period;
+      if (data.countdown !== undefined) serverCountdown = data.countdown;
+      if (data.server_time) serverCountdownTs = data.server_time;
       if (data.latest && data.latest.draw_nbr > afterNbr) {
         // 新数据到了! 先更新页面
         handleNewDraw(data.latest);
@@ -1676,6 +1680,9 @@ async function loadLatest(animate) {
     const resp = await fetch('/api/latest');
     const data = await resp.json();
     if (!data.latest) return;
+    if (data.current_period) serverPeriod = data.current_period;
+    if (data.countdown !== undefined) serverCountdown = data.countdown;
+    if (data.server_time) serverCountdownTs = data.server_time;
 
     // 期号变化时, 刷新所有相关数据 (SSE 兜底机制)
     const isNew = lastDrawNbr > 0 && data.latest.draw_nbr > lastDrawNbr;

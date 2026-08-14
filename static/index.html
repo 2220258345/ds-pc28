@@ -1536,9 +1536,11 @@ function handleNewDraw(latest) {
   const isNew = latest.draw_nbr > lastDrawNbr;
   if (isNew) lastDrawNbr = latest.draw_nbr;
   if (scratchEnabled) {
-    showLatestResult(latest, false);
-    showScratch();
-    scratchPendingRefresh = isNew;
+    if (isNew) {
+      showLatestResult(latest, false);
+      showScratch();
+      scratchPendingRefresh = true;
+    }
   } else {
     showLatestResult(latest, true);
     if (isNew) refreshDataPanels();
@@ -1582,16 +1584,20 @@ function showScratch() {
   scratchChecked = false;
 }
 
+function flushScratchRefresh() {
+  if (scratchPendingRefresh) {
+    scratchPendingRefresh = false;
+    refreshDataPanels();
+  }
+}
+
 function hideScratch() {
   const layer = document.getElementById('scratchLayer');
   layer.classList.remove('active');
   layer.style.opacity = '1';
   layer.style.transition = 'none';
   scratchCtx = null;
-  if (scratchPendingRefresh) {
-    scratchPendingRefresh = false;
-    refreshDataPanels();
-  }
+  flushScratchRefresh();
 }
 
 function scratchAt(x, y) {
@@ -1623,9 +1629,10 @@ function revealScratch() {
   if (scratchChecked) return;
   scratchChecked = true;
   const layer = document.getElementById('scratchLayer');
-  layer.style.transition = 'opacity 0.5s';
+  layer.style.transition = 'opacity 0.35s';
   layer.style.opacity = '0';
-  setTimeout(hideScratch, 500);
+  flushScratchRefresh();
+  setTimeout(hideScratch, 350);
 }
 
 function checkScratchRatio() {

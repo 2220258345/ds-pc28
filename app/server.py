@@ -21,7 +21,7 @@ from socketserver import ThreadingMixIn
 
 from collector import (
     fetch_with_failover,
-    fetch_incremental_multi,
+    INCREMENTAL_ORDER,
     FULL_ORDER,
     insert_rows,
     verify,
@@ -66,8 +66,7 @@ def do_update():
     pre_max = db.get_db_rows()[1] or 0
 
     try:
-        rows = fetch_incremental_multi(verbose=False)
-        src = "multi"
+        rows, src = fetch_with_failover(INCREMENTAL_ORDER, verbose=False)
         if not rows:
             with _lock:
                 _status["last_result"] = "failed"

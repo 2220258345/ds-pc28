@@ -939,7 +939,6 @@ tr.row-range-end {
 
 /* 刮刮卡覆盖层 */
 .result-card { position: relative; overflow: hidden; }
-.balls-wrap { position: relative; display: flex; flex: 1; }
 .scratch-layer {
   position: absolute;
   inset: 0;
@@ -1003,21 +1002,19 @@ tr.row-range-end {
       <div class="result-card">
         <div class="result-label">最新数据</div>
         <div class="result-period" id="latestPeriod">第 --- 期</div>
-        <div class="balls-wrap">
-          <div class="balls" id="latestBalls">
-            <div class="ball c0">?</div>
-            <span class="ball-sep">+</span>
-            <div class="ball c0">?</div>
-            <span class="ball-sep">+</span>
-            <div class="ball c0">?</div>
-            <span class="ball-sep">=</span>
-            <span class="ball-sum">?</span>
-          </div>
-          <div class="scratch-layer" id="scratchLayer">
-            <canvas id="scratchCanvas"></canvas>
-          </div>
+        <div class="balls" id="latestBalls">
+          <div class="ball c0">?</div>
+          <span class="ball-sep">+</span>
+          <div class="ball c0">?</div>
+          <span class="ball-sep">+</span>
+          <div class="ball c0">?</div>
+          <span class="ball-sep">=</span>
+          <span class="ball-sum">?</span>
         </div>
         <div class="result-badges" id="latestBadges"></div>
+        <div class="scratch-layer" id="scratchLayer">
+          <canvas id="scratchCanvas"></canvas>
+        </div>
       </div>
     </div>
 
@@ -1515,7 +1512,6 @@ function showLatestResult(d, animate) {
 
 // ========== 刮奖 ==========
 let scratchEnabled = false;
-let scratchPendingRefresh = false;
 
 function refreshDataPanels() {
   loadHistory(currentPage);
@@ -1529,11 +1525,10 @@ function handleNewDraw(latest) {
   if (scratchEnabled) {
     showLatestResult(latest, false);
     showScratch();
-    scratchPendingRefresh = isNew;
   } else {
     showLatestResult(latest, true);
-    if (isNew) refreshDataPanels();
   }
+  if (isNew) refreshDataPanels();
   if (waitingForResult) exitWaitingState();
   if (inMaintenanceState) exitMaintenanceState();
 }
@@ -1579,10 +1574,6 @@ function hideScratch() {
   layer.style.opacity = '1';
   layer.style.transition = 'none';
   scratchCtx = null;
-  if (scratchPendingRefresh) {
-    scratchPendingRefresh = false;
-    refreshDataPanels();
-  }
 }
 
 function scratchAt(x, y) {

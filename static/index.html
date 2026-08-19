@@ -1353,6 +1353,12 @@ function setupSSE() {
 function onNewDraw(latest) {
   // 统一入口：刮奖模式会先盖住，等刮开后再刷新下方面板
   handleNewDraw(latest);
+  // 未开期数标签页可见时, 刷新统计 (防抖避免频繁请求)
+  const tab = document.getElementById('tab-unopened');
+  if (tab && tab.classList.contains('active')) {
+    clearTimeout(onNewDraw._t);
+    onNewDraw._t = setTimeout(loadDateRangeStats, 1500);
+  }
 }
 
 // ========== 倒计时 ==========

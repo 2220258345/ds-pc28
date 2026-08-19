@@ -341,7 +341,7 @@ class SQLAlchemyStorage(Storage):
                     rows_between = row_count - last_seen[t]["rows"] - 1
                     nbr_diff = nbr - prev_nbr - 1
                     if rows_between == nbr_diff and nbr_diff > 0:
-                        intervals[t].append(nbr_diff)
+                        intervals[t].append({"g": nbr_diff, "s": prev_nbr, "e": nbr, "d": date})
                         if nbr_diff > max_info[t]["max"]:
                             max_info[t] = {
                                 "max": nbr_diff, "start": prev_nbr, "end": nbr,
@@ -354,7 +354,7 @@ class SQLAlchemyStorage(Storage):
                 rows_between = row_count - last_seen[combo]["rows"] - 1
                 nbr_diff = nbr - prev_nbr - 1
                 if rows_between == nbr_diff and nbr_diff > 0:
-                    intervals[combo].append(nbr_diff)
+                    intervals[combo].append({"g": nbr_diff, "s": prev_nbr, "e": nbr, "d": date})
                     if nbr_diff > max_info[combo]["max"]:
                         max_info[combo] = {
                             "max": nbr_diff, "start": prev_nbr, "end": nbr,
@@ -369,12 +369,13 @@ class SQLAlchemyStorage(Storage):
             items.append({
                 "type": t,
                 "count": len(g),
-                "avg": round(sum(g) / len(g), 2) if g else 0,
+                "avg": round(sum(x["g"] for x in g) / len(g), 2) if g else 0,
                 "max": mi["max"],
                 "max_start": mi["start"],
                 "max_end": mi["end"],
                 "max_date": mi["date"],
                 "max_time": mi["time"],
+                "intervals": list(g),
             })
         return {
             "days": days or 0,

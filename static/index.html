@@ -560,14 +560,26 @@ td .mini-ball {
 .hourly-table tbody tr:hover { background: var(--paper-3, #f7f8fb); }
 .hourly-table .h-type { font-weight: 700; color: var(--ink); }
 .hourly-table .h-num { font-family: "JetBrains Mono", monospace; color: var(--ink-2); }
-.hourly-table .h-max { color: var(--red); font-weight: 700; }
-.hourly-table .h-period {
-  color: var(--accent); cursor: pointer; font-weight: 600;
+.hourly-table .h-max-cell { text-align: center; white-space: nowrap; }
+.hourly-table .h-max {
+  color: var(--red); font-weight: 700; cursor: pointer;
   text-decoration: underline dotted; text-underline-offset: 3px;
   font-family: "JetBrains Mono", monospace;
 }
-.hourly-table .h-period:hover { color: var(--accent-2, #2541b2); background: var(--paper-3); }
+.hourly-table .h-max:hover { color: #c0392b; background: var(--paper-3); }
+.hourly-table .h-max-count { color: var(--ink-3); font-size: var(--text-xs); margin-left: 3px; font-weight: 400; font-style: normal; font-family: "JetBrains Mono", monospace; }
+.hourly-table .h-more { display: inline-block; font-family: "JetBrains Mono", monospace; font-size: var(--text-xs); color: var(--ink-3); background: var(--paper-3, #f0f2f7); border-radius: 4px; padding: 1px 6px; line-height: 1.6; }
 .hourly-table .h-empty { color: var(--ink-3); font-style: italic; }
+.hourly-table .h-intervals-cell { max-width: 320px; }
+.hourly-table .h-intervals { display: flex; flex-wrap: wrap; gap: 4px 6px; justify-content: center; }
+.hourly-table .h-gap {
+  display: inline-block; font-family: "JetBrains Mono", monospace;
+  font-size: var(--text-xs); color: var(--ink-2);
+  background: var(--paper-3, #f0f2f7); border-radius: 4px;
+  padding: 1px 6px; line-height: 1.6; cursor: pointer; text-decoration: none;
+}
+.hourly-table .h-gap:hover { background: #e6ebff; color: var(--accent-2, #2541b2); }
+.hourly-table .h-freq { font-size: var(--text-xs); color: var(--ink-3); margin-top: 6px; line-height: 1.6; text-align: center; }
 @keyframes row-flash-anim {
   0% { background: rgba(67,97,238,0.35); }
   100% { background: transparent; }
@@ -1125,8 +1137,8 @@ tr.row-range-end {
                 <th>出现次数</th>
                 <th>平均间隔</th>
                 <th>最大间隔</th>
+                <th>每次间隔</th>
                 <th>发生日期</th>
-                <th>对应期号</th>
               </tr>
             </thead>
             <tbody id="hourlyTableBody">
@@ -1964,32 +1976,42 @@ async function loadDateRangeStats() {
       tbody.innerHTML = `<tr><td colspan="6" class="h-empty">该范围无数据</td></tr>`;
       return;
     }
+    const MAX_IV = 50;  // 每形态最多渲染间隔数, 超出折叠
     tbody.innerHTML = data.items.map(it => {
       const hasMax = it.max > 0;
-      const periodCell = hasMax
-        ? `<a class="h-period" data-start="${it.max_start}" data-end="${it.max_end}" data-date="${it.max_date}" data-type="${it.type}" title="点击查看区间数据">${it.max_start} → ${it.max_end}</a>`
-        : `<span class="h-empty">—</span>`;
-      const dateCell = hasMax ? `${it.max_date} ${it.max_time.slice(0,5)}` : '<span class="h-empty">—</span>';
-      return `<tr>
+      const ivs = it.intervals || [];
+      const maxCount = ivs.reduce((n, x) => n + (x.g === it.max ? 1 : 0), 0);
+      const maxCell = hasMax
+        ? `<a class="h-max" data-s="${it.max_start}" data-e="${it.max_end}">${it.max}</a>${maxCount > 1 ? `<i class="h-max-count">×${maxCount}</i>` : ''}`
+        : '<span class="h-empty">—</span>';
+      const dateCell = hasMax ? `${it.max_date} ${it.max_time.slice(0,5)}` : '—';
+      const freq = {};
+      for (let i = 0; i < ivs.length; i++) { const g = ivs[i].g; freq[g] = (freq[g] || 0) + 1; }
+      const freqStr = Object.keys(freq).sort((a, b) => +a - +b).map(k => `${k}:${freq[k]}`).join(' · ');
+      const shown = ivs.slice(0, MAX_IV);
+      const chips = shown.map(x => `<a class="h-gap" data-s="${x.s}" data-e="${x.e}">${x.g}</a>`).join('');
+      const more = ivs.length > MAX_IV ? `<span class="h-more">+${ivs.length - MAX_IV}</span>` : '';
+      const intervalsCell = ivs.length
+        ? `<div class="h-intervals-wrap"><div class="h-intervals">${chips}${more}</div><div class="h-freq">频次: ${freqStr}</div></div>`
+        : '—';
+      return `<tr data-type="${it.type}">
         <td class="h-type">${it.type}</td>
         <td class="h-num">${it.count}</td>
         <td class="h-num">${it.avg || '—'}</td>
-        <td class="h-max">${it.max || '—'}</td>
+        <td class="h-max-cell">${maxCell}</td>
+        <td class="h-intervals-cell">${intervalsCell}</td>
         <td class="h-num">${dateCell}</td>
-        <td>${periodCell}</td>
       </tr>`;
     }).join('');
-    // 绑定期号点击 -> 弹窗独立显示区间 (避免公用列表翻页)
-    tbody.querySelectorAll('.h-period').forEach(a => {
-      a.onclick = (e) => {
-        e.preventDefault();
-        const start = Number(a.dataset.start);
-        const end = Number(a.dataset.end);
-        const date = a.dataset.date || '';
-        const type = a.dataset.type || '';
-        showRangeModal(start, end, type, date);
-      };
-    });
+    // 事件委托: 单个 click 处理所有区间跳转
+    tbody.onclick = (e) => {
+      const a = e.target.closest('.h-gap, .h-max');
+      if (!a) return;
+      e.preventDefault();
+      const tr = a.closest('tr');
+      const type = tr ? tr.dataset.type : '';
+      showRangeModal(Number(a.dataset.s), Number(a.dataset.e), type, '');
+    };
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="6" class="h-empty">加载失败: ${e.message}</td></tr>`;
   }

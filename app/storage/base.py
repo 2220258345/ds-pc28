@@ -40,6 +40,8 @@ class VerifyResult:
     min_nbr: int | None
     max_nbr: int | None
     max_date: str | None
+    missing: int = 0                    # 缺失期数 (期号不连续)
+    gaps: list[tuple[int, int]] | None = None   # 缺失区间 [(起, 止)], 含两端
 
 
 class Storage(ABC):

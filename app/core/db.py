@@ -117,7 +117,11 @@ def verify():
     r = _store().verify()
     print(
         f"校验: 行数 {r.rows:,}  重复 {r.duplicates}  和值错误 {r.bad_sum}  "
+        f"缺失期 {r.missing}  "
         f"期号 {r.min_nbr}~{r.max_nbr}  最新 {r.max_date}"
     )
+    if r.gaps:
+        for s, e in r.gaps:
+            print(f"  缺口: {s} ~ {e}  (共 {e - s + 1} 期)")
     print("结果:", "通过" if r.ok else "失败")
     return r.ok

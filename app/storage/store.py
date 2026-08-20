@@ -481,12 +481,28 @@ class SQLAlchemyStorage(Storage):
         rng = self._fetchall(
             "SELECT MIN(draw_nbr), MAX(draw_nbr), MAX(draw_date) FROM draws"
         )[0]
+
+        # 期号连续性检测: 用自连接找相邻期号之间的缺口
+        gaps_rows = self._fetchall(
+            "SELECT t.draw_nbr + 1, nxt.draw_nbr - 1 "
+            "FROM draws t "
+            "JOIN draws nxt ON nxt.draw_nbr = ("
+            "    SELECT MIN(x.draw_nbr) FROM draws x WHERE x.draw_nbr > t.draw_nbr"
+            ") "
+            "WHERE nxt.draw_nbr - t.draw_nbr > 1 "
+            "ORDER BY t.draw_nbr"
+        )
+        gaps = [(int(g[0]), int(g[1])) for g in gaps_rows]
+        missing = sum(end - start + 1 for start, end in gaps)
+
         return VerifyResult(
-            ok=(dup == 0 and bad == 0),
+            ok=(dup == 0 and bad == 0 and missing == 0),
             rows=n,
             duplicates=dup,
             bad_sum=bad,
             min_nbr=rng[0],
             max_nbr=rng[1],
             max_date=rng[2],
+            missing=missing,
+            gaps=gaps,
         )

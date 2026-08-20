@@ -118,7 +118,9 @@ def auto_update_loop(interval_min):
     """后台线程: 与开奖周期同步采集。
 
     在周期边界前 2 秒开始预热 (jndpc 可能提前发布),
-    归零后每 0.3 秒重试, 直到拿到新数据。
+    之后持续轮询直到拿到新期 —— 不设固定次数的放弃上限,
+    避免开奖延迟时采集线程提前退出而错过结果, 导致前端无法第一时间显示。
+    轮询间隔随尝试次数从 0.3s 逐步增大到 5s, 防止数据源长时间不可用时空转。
     """
     while True:
         with _lock:
@@ -131,20 +133,22 @@ def auto_update_loop(interval_min):
             if sleep_sec > 1:
                 print(f"[auto-update] 等待 {sleep_sec:.1f}s 后开始预热采集...")
                 time.sleep(sleep_sec)
-            # 采集: 每0.3秒重试, 直到拿到新数据 (最多 90 次 = 27 秒)
+            # 采集: 持续重试直到拿到新期, 不设固定放弃上限
             old_max = db.get_db_rows()[1] or 0
             print(f"[auto-update] 开始采集, old_max={old_max}")
-            for attempt in range(90):
+            attempt = 0
+            while True:
                 try:
                     do_update()
                     new_max = db.get_db_rows()[1] or 0
                     if new_max > old_max:
                         print(f"[auto-update] 成功: {old_max} -> {new_max} (第{attempt+1}次尝试)")
                         break
-                    time.sleep(0.3)
                 except Exception as e:
                     print(f"[auto-update] {e}")
-                    time.sleep(0.3)
+                attempt += 1
+                # 降频退避, 避免数据源不可用时高频空转
+                time.sleep(min(0.3 + attempt * 0.05, 5.0))
         else:
             time.sleep(10)
 

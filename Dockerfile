@@ -10,13 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY static/ ./static/
 
-# 数据持久化目录 (SQLite 数据库存放于此)
-RUN mkdir -p /app/data
-ENV DB_BACKEND=sqlite
-ENV DB_DIR=/app/data
-
+# 数据库连接完全由 docker-compose.yml 的 environment 注入 (PostgreSQL)。
+# 不在镜像内固化任何 DB 默认值, 避免误连 SQLite 产生空库。
 EXPOSE 8000
-VOLUME ["/app/data"]
 
 # -u 关闭 stdout 缓冲, 使日志实时可见
 CMD ["python", "-u", "app/server.py", "--port", "8000"]

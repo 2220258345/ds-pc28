@@ -1876,7 +1876,7 @@ async function loadUnopened() {
       { key: '小双', desc: '小 + 双' },
     ];
     document.getElementById('unopenedGrid').innerHTML = allTypes.map(t => {
-      const it = byType[t.key] || { current: 0, avg: 0, max: 0, med: 0, p95: 0, p99: 0, status: 'normal', ratio: 0 };
+      const it = byType[t.key] || { current: 0, avg: 0, max: 0, med: 0, p95: 0, p99: 0, status: 'normal', ratio: 0, total: 0 };
       const cur = it.current;
       const statusColor = STATUS_COLOR[it.status] || '#545870';
       const statusLabel = STATUS_LABEL[it.status] || '正常';
@@ -1886,7 +1886,7 @@ async function loadUnopened() {
         <div class="type-count" style="color:${statusColor}">${cur}</div>
         <div class="type-desc">${t.desc}</div>
         <div class="type-meta">平均 <b>${it.avg}</b> · 中位 <b>${it.med}</b> · 最大 <b>${it.max}</b></div>
-        <div class="type-meta" title="历史遗漏中约 95% 不超过 ${it.p95} 期，99% 不超过 ${it.p99} 期">95分位 <b>${it.p95}</b> · 99分位 <b>${it.p99}</b> · 约为平均的 <b>${it.ratio}</b> 倍</div>
+        <div class="type-meta">总出现 <b>${(it.total || 0).toLocaleString()}</b> 次 · 95分位 <b>${it.p95}</b> · 99分位 <b>${it.p99}</b></div>
         <div class="type-bar">
           <div class="type-bar-fill" style="width:${Math.min(100, (cur / Math.max(it.max, 1)) * 100)}%; background:${statusColor}"></div>
         </div>

@@ -233,16 +233,19 @@ class SQLAlchemyStorage(Storage):
             return {"latest_nbr": latest, "items": []}
 
         gaps = {t: [] for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]}
+        totals = {t: 0 for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]}
         last_seen = {}
         for nbr, date, time_str, sz, pa, _sm in rows:
             if _is_maintenance(date, time_str):
                 last_seen = {}
                 continue
             for t in [sz, pa]:
+                totals[t] += 1
                 if t in last_seen:
                     gaps[t].append(nbr - last_seen[t])
                 last_seen[t] = nbr
             combo = f"{sz}{pa}"
+            totals[combo] += 1
             if combo in last_seen:
                 gaps[combo].append(nbr - last_seen[combo])
             last_seen[combo] = nbr
@@ -270,9 +273,10 @@ class SQLAlchemyStorage(Storage):
             current = cur_unopened(t)
             if n == 0:
                 items.append({
-                    "type": t, "current": current, "max": 0, "avg": 0,
-                    "med": 0, "p95": 0, "p99": 0, "ratio": 0, "status": "normal",
-                })
+                "type": t, "current": current, "max": 0, "avg": 0,
+                "med": 0, "p95": 0, "p99": 0, "ratio": 0, "status": "normal",
+                "total": totals[t],
+            })
                 continue
             mx = max(g)
             avg = sum(g) / n
@@ -293,6 +297,7 @@ class SQLAlchemyStorage(Storage):
                 "avg": round(avg, 2), "med": med,
                 "p95": p95, "p99": p99,
                 "ratio": round(ratio, 2), "status": status,
+                "total": totals[t],
             })
         return {"latest_nbr": latest, "items": items}
 

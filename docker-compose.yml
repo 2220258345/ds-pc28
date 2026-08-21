@@ -9,6 +9,8 @@ services:
       POSTGRES_PASSWORD: pc28pass
     volumes:
       - pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:15432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pc28 -d pc28"]
       interval: 5s

@@ -1884,9 +1884,9 @@ async function loadUnopened() {
       return `<div class="unopened-card ${cardCls}">
         <div class="type-label">${t.key}<span class="type-status" style="background:${statusColor}">${statusLabel}</span></div>
         <div class="type-count" style="color:${statusColor}">${cur}</div>
-        <div class="type-desc">${t.desc}</div>
+        <div class="type-desc">${t.desc} · 累计 <b>${(it.total || 0).toLocaleString()}</b> 次</div>
         <div class="type-meta">平均 <b>${it.avg}</b> · 中位 <b>${it.med}</b> · 最大 <b>${it.max}</b></div>
-        <div class="type-meta">总出现 <b>${(it.total || 0).toLocaleString()}</b> 次 · 95分位 <b>${it.p95}</b> · 99分位 <b>${it.p99}</b></div>
+        <div class="type-meta">95分位 <b>${it.p95}</b> · 99分位 <b>${it.p99}</b> · 约为平均的 <b>${it.ratio}</b> 倍</div>
         <div class="type-bar">
           <div class="type-bar-fill" style="width:${Math.min(100, (cur / Math.max(it.max, 1)) * 100)}%; background:${statusColor}"></div>
         </div>

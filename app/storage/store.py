@@ -331,6 +331,7 @@ class SQLAlchemyStorage(Storage):
         )
 
         intervals = {t: [] for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]}
+        totals = {t: 0 for t in ["大", "小", "单", "双", "大单", "大双", "小单", "小双"]}
         max_info = {t: {"max": 0, "start": 0, "end": 0, "date": "", "time": ""}
                     for t in intervals}
         last_seen = {}
@@ -341,6 +342,7 @@ class SQLAlchemyStorage(Storage):
                 last_seen = {}
                 continue
             for t in [sz, pa]:
+                totals[t] += 1
                 if t in last_seen:
                     prev_nbr = last_seen[t]["nbr"]
                     rows_between = row_count - last_seen[t]["rows"] - 1
@@ -354,6 +356,7 @@ class SQLAlchemyStorage(Storage):
                             }
                 last_seen[t] = {"nbr": nbr, "rows": row_count}
             combo = f"{sz}{pa}"
+            totals[combo] += 1
             if combo in last_seen:
                 prev_nbr = last_seen[combo]["nbr"]
                 rows_between = row_count - last_seen[combo]["rows"] - 1
@@ -373,7 +376,7 @@ class SQLAlchemyStorage(Storage):
             mi = max_info[t]
             items.append({
                 "type": t,
-                "count": len(g),
+                "count": totals[t],
                 "avg": round(sum(x["g"] for x in g) / len(g), 2) if g else 0,
                 "max": mi["max"],
                 "max_start": mi["start"],

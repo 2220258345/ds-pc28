@@ -21,6 +21,7 @@ from socketserver import ThreadingMixIn
 
 from collector import (
     fetch_with_failover,
+    fetch_wh28_history,
     INCREMENTAL_ORDER,
     FULL_ORDER,
     insert_rows,
@@ -55,6 +56,45 @@ def toggle_auto():
         return _status["auto_update"]
 
 
+def backfill_gaps():
+    """检测期号缺口并从 wh28.com 补采缺失期。
+
+    pc89.net 等数据源会跳过 0+0+0=0 的期号, 导致数据库中期号不连续。
+    此函数用 verify() 检测缺口, 从 wh28.com 按日期补采。
+    """
+    try:
+        result = db._store().verify()
+        if not result.gaps:
+            return 0
+
+        total_filled = 0
+        for start, end in result.gaps:
+            # 从缺口前后的期号获取日期, 用于 wh28.com 按日期查询
+            dates = set()
+            before = db._store().range_rows(start - 1, start - 1)
+            if before:
+                dates.add(before[0]["draw_date"])
+            after = db._store().range_rows(end + 1, end + 1)
+            if after:
+                dates.add(after[0]["draw_date"])
+
+            for date_str in dates:
+                rows = fetch_wh28_history(date_str)
+                missing = [r for r in rows if start <= r["draw_nbr"] <= end]
+                if missing:
+                    filled = insert_rows(missing)
+                    total_filled += filled
+                    print(f"[backfill] {date_str} 补采 {filled} 期 ({start}~{end})")
+
+        if total_filled > 0:
+            verify()
+            print(f"[backfill] 共补采 {total_filled} 期")
+        return total_filled
+    except Exception as e:
+        print(f"[backfill] 异常: {e}")
+        return 0
+
+
 def do_update():
     """执行一次增量采集。采集到新数据时, 通过 SSE 推送给前端。"""
     with _lock:
@@ -75,6 +115,13 @@ def do_update():
             return "failed"
 
         added = insert_rows(rows)
+
+        # 自动补缺: pc89.net 可能跳过 0+0+0 期号, 检测并从 wh28.com 补采
+        if added > 0:
+            filled = backfill_gaps()
+            if filled > 0:
+                added += filled
+
         ok = verify()
         n, mx_nbr, mx_date = db.get_db_rows()
         with _lock:
